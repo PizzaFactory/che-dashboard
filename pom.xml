@@ -24,11 +24,14 @@
     <packaging>war</packaging>
     <name>Che Dashboard :: Web App</name>
     <inceptionYear>2015</inceptionYear>
-        <scm>
+    <scm>
         <connection>scm:git:git@github.com:PizzaFactory/che-dashboard.git</connection>
         <developerConnection>scm:git:git@github.com:PizzaFactory/che-dashboard.git</developerConnection>
         <tag>HEAD</tag>
     </scm>
+    <properties>
+        <altDeploymentRepository>che-dashboard::default::https://pkgs.dev.azure.com/pizzafactory/camino/_packaging/che-dashboard/maven/v1</altDeploymentRepository>
+    </properties>
     <repositories>
         <repository>
             <id>ossrh</id>
