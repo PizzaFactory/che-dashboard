@@ -1,7 +1,7 @@
 Dockerfile
+apache.Dockerfile
 node_modules
 bower_components
-target
 pom.xml
 ./typings
 ./tmp
