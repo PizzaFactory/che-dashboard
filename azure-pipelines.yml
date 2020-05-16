@@ -10,6 +10,12 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
+- task: Docker@1
+  displayName: Container registry login
+  inputs:
+    command: login
+    dockerRegistryEndpoint: camino.azurecr.io
+    containerRegistryType: Container Registry
 
 - task: DownloadSecureFile@1
   name: caCertificate
@@ -32,3 +38,12 @@ steps:
     publishJUnitResults: true
     testResultsFiles: '**/surefire-reports/TEST-*.xml'
     goals: 'deploy'
+
+- script: |
+    docker build -t camino.azurecr.io/camino/che-dashboard:next -f apache.Dockerfile .
+  displayName: Building image.
+
+- script: |
+    docker push camino.azurecr.io/camino/che-dashboard:next
+  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+  displayName: Pushing image.
