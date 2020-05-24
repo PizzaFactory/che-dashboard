@@ -6,12 +6,11 @@
 #
 # SPDX-License-Identifier: EPL-2.0
 #
-name: CI
+name: PR
 # Trigger the workflow on push
 on:
-  push:
-    branches:
-      - master
+  pull_request:
+    branches: [ master ]
 jobs:
   docker-build:
     runs-on: ubuntu-18.04
@@ -29,16 +28,10 @@ jobs:
         buildx-version: v0.4.1
     - name: "Docker prepare"
       run: docker image prune -a -f
-    - name: "Docker Quay.io Login"
-      run:  docker login -u "${{ secrets.QUAY_USERNAME }}" -p "${{ secrets.QUAY_PASSWORD }}" quay.io
-    - name: "Docker docker.io Login"
-      run:  docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" -p "${{ secrets.DOCKERHUB_PASSWORD }}" docker.io
     - name: "Docker build with cache"
       uses: nick-invision/retry@v1
       with:
-        timeout_minutes: 20
+        timeout_minutes: 100
         max_attempts: 5
         retry_wait_seconds: 60
-        command: docker buildx build --platform linux/amd64 --cache-from="type=registry,ref=${CACHE_IMAGE_FULL}" --cache-to="type=registry,ref=${CACHE_IMAGE_FULL},mode=max" -t ${IMAGE_FULL}  -f apache.Dockerfile --push .
-    - name: "Docker Logout"
-      run: docker logout
+        command: docker buildx build --platform linux/amd64 --cache-from="type=registry,ref=${CACHE_IMAGE_FULL}" -t ${IMAGE_FULL}  -f apache.Dockerfile .

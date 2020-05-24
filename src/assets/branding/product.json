@@ -13,7 +13,7 @@
   "workspace": {
     "priorityStacks": ["Blank"],
     "defaultStack": "blank-default",
-    "creationLink": "#/getstarted?tab=Custom%20Workspace"
+    "creationLink": "#/getstarted?tab=customWorkspace"
   },
   "cli": {
     "configName": "che.env",

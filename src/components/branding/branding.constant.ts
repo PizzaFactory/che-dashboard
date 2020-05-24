@@ -60,6 +60,7 @@ export type IBrandingFooter = {
 export type IBrandingConfiguration = {
   menu: {
     disabled: che.ConfigurableMenuItem[];
+    enabled?: che.ConfigurableMenuItem[];
   },
   prefetch: {
     cheCDN?: string;
@@ -94,7 +95,7 @@ export const BRANDING_DEFAULT: IBranding = {
       'Blank'
     ],
     defaultStack: 'java-mysql',
-    creationLink: '#/getstarted?tab=Custom%20Workspace'
+    creationLink: '#/getstarted?tab=customWorkspace'
   },
   cli: {
     configName: 'che.env',
@@ -111,7 +112,9 @@ export const BRANDING_DEFAULT: IBranding = {
   },
   configuration: {
     menu: {
-      disabled: []
+      disabled: [
+        "organizations"
+      ],
     },
     features: {
       disabled: []
