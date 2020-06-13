@@ -11,9 +11,12 @@
   "supportEmail": "support@pizzafactory.jp",
   "oauthDocs": "Configure OAuth in the che.properties file.",
   "workspace": {
-    "priorityStacks": ["Blank"],
-    "defaultStack": "blank-default",
-    "creationLink": "#/getstarted?tab=customWorkspace"
+    "priorityStacks": [
+      "Java",
+      "Java-MySQL",
+      "Blank"
+    ],
+    "defaultStack": "java-mysql"
   },
   "cli": {
     "configName": "che.env",
