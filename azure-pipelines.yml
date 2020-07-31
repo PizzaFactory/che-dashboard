@@ -37,7 +37,7 @@ steps:
     jdkArchitectureOption: 'x64'
     publishJUnitResults: true
     testResultsFiles: '**/surefire-reports/TEST-*.xml'
-    goals: 'install'
+    goals: 'deploy'
 
 - script: |
     docker build -t camino.azurecr.io/camino/che-dashboard:next -f apache.Dockerfile .
