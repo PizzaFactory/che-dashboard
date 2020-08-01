@@ -17,27 +17,15 @@ steps:
     dockerRegistryEndpoint: camino.azurecr.io
     containerRegistryType: Container Registry
 
-- task: DownloadSecureFile@1
-  name: caCertificate
-  displayName: 'Download settings.xml'
+- task: NodeTool@0
   inputs:
-    secureFile: 'settings.xml'
+    versionSpec: '10.x' # replace this value with the version that you need for your project
 
-- task: MavenAuthenticate@0
-  displayName: 'Maven Authenticate'
-  inputs:
-    artifactsFeeds: che-dashboard
+- script: yarn && yarn build
+  displayName: yarn (build)
 
-- task: Maven@3
-  inputs:
-    mavenPomFile: 'pom.xml'
-    mavenOptions: '-Xmx3072m'
-    javaHomeOption: 'JDKVersion'
-    jdkVersionOption: '1.11'
-    jdkArchitectureOption: 'x64'
-    publishJUnitResults: true
-    testResultsFiles: '**/surefire-reports/TEST-*.xml'
-    goals: 'deploy'
+- script: yarn test
+  displayName: yarn (test)
 
 - script: |
     docker build -t camino.azurecr.io/camino/che-dashboard:next -f apache.Dockerfile .

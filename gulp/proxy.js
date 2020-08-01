@@ -18,10 +18,14 @@ var proxy = require('proxy-middleware');
 
 var serverOptions = {
   string: 'server',
-  default: {server: 'http://localhost:8080'}
+  default: {server: 'https://che.openshift.io'}
 };
 
 var options = minimist(process.argv.slice(2), serverOptions);
+
+if (options.server.endsWith('/')) {
+  options.server = options.server.substr(0, options.server.length - 1);
+}
 
 var patterns = ['/api', '/ext', '/ws', '/datasource', '/java-ca', '/im', '/che', '/admin', '/workspace-loader'];
 
