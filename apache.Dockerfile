@@ -43,3 +43,4 @@ RUN sed -i 's|    AllowOverride None|    AllowOverride All|' /usr/local/apache2/
     echo "ServerName localhost" >> /usr/local/apache2/conf/httpd.conf
 COPY --from=builder /dashboard/target/dist/ /usr/local/apache2/htdocs/dashboard
 RUN sed -i -r -e 's#<base href="/">#<base href="/dashboard/"#g'  /usr/local/apache2/htdocs/dashboard/index.html
+ADD wpa-resources/* /usr/local/apache2/htdocs/
