@@ -61,3 +61,12 @@ import '../node_modules/angular-websocket/dist/angular-websocket.min.js';
 // include UD app
 import './app/index.module';
 
+// For Progressive Web App
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker
+    .register('./sw.js')
+    .then(registration =>
+      console.log('Success ! Scope: ', registration.scope))
+    .catch(err =>
+      console.log('Failed ! Error: ', err));
+}
