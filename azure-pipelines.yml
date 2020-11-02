@@ -9,29 +9,36 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-steps:
-- task: Docker@1
-  displayName: Container registry login
-  inputs:
-    command: login
-    dockerRegistryEndpoint: camino.azurecr.io
-    containerRegistryType: Container Registry
-
-- task: NodeTool@0
-  inputs:
-    versionSpec: '10.x' # replace this value with the version that you need for your project
-
-- script: yarn && yarn build
-  displayName: yarn (build)
-
-- script: yarn test
-  displayName: yarn (test)
-
-- script: |
-    docker build -t camino.azurecr.io/camino/che-dashboard:next -f apache.Dockerfile .
-  displayName: Building image.
-
-- script: |
-    docker push camino.azurecr.io/camino/che-dashboard:next
-  condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
-  displayName: Pushing image.
+stages:
+  - stage:
+    jobs: 
+  
+      - job: Local
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '10.x' # replace this value with the version that you need for your project
+          
+          - script: yarn && yarn build
+            displayName: yarn (build)
+          
+          - script: yarn test
+            displayName: yarn (test)
+  
+      - job: Container
+        steps:
+          - task: Docker@1
+            displayName: Container registry login
+            inputs:
+              command: login
+              dockerRegistryEndpoint: camino.azurecr.io
+              containerRegistryType: Container Registry
+          
+          - script: |
+              docker build -t camino.azurecr.io/camino/che-dashboard:next -f apache.Dockerfile .
+            displayName: Building image.
+          
+          - script: |
+              docker push camino.azurecr.io/camino/che-dashboard:next
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: Pushing image.
