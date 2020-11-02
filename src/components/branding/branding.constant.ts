@@ -16,16 +16,16 @@
  */
 
 export const jsonBranding = JSON.stringify({
-  'title': 'PizzaFactory Camino powered by Eclipse Che ',
-  'name': 'PizzaFactory Camino',
-  'logoFile': 'pf-logo.svg',
-  'logoTextFile': 'pf-logo-text.svg',
+  'title': 'Eclipse Che',
+  'name': 'Eclipse Che',
+  'logoFile': 'che-logo.svg',
+  'logoTextFile': 'che-logo-text.svg',
   'favicon': 'favicon.ico',
-  'loader': 'pizza-flat.svg',
+  'loader': 'loader.svg',
   'websocketContext': '/api/websocket',
-  'helpPath': 'https://helpdesk.monami-ya.com/',
-  'helpTitle': 'Helpdesk',
-  'supportEmail': 'support@pizzafactory.jp',
+  'helpPath': 'https://www.eclipse.org/che/',
+  'helpTitle': 'Community',
+  'supportEmail': 'che-dev@eclipse.org',
   'oauthDocs': 'Configure OAuth in the che.properties file.',
   'workspace': {
     'priorityStacks': [
