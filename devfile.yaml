@@ -1,44 +1,55 @@
 apiVersion: 1.0.0
 metadata:
-  name: che-dashboard
+  generateName: che-dashboard-react-
+attributes:
+  persistVolumes: 'false'
 components:
-  - alias: typescript-plugin
-    type: chePlugin
-    id: che-incubator/typescript/latest
-  - alias: dash-dev
-    type: dockerimage
-    image: 'quay.io/eclipse/che-dashboard-dev:nightly'
+  - mountSources: true
     endpoints:
-      - name: dashboard-dev-server
-        port: 3000
-        attributes:
-          path: /
+      - attributes:
+          public: 'true'
           protocol: http
-          public: "true"
-    mountSources: true
+          path: /
+        name: dashboard-dev-server
+        port: 3000
+    command:
+      - tail
+      - '-f'
+      - /dev/null
     memoryLimit: 3Gi
+    type: dockerimage
+    alias: dashboard-dev
+    image: 'docker.io/node:12.20.1'
+  - id: vscode/typescript-language-features/latest
+    type: chePlugin
 commands:
   - name: '[UD] install dependencies'
     actions:
-      - type: exec
-        component: dash-dev
-        command: yarn
-        workdir: /projects/che-dashboard
-  - name: '[UD] build'
+      - workdir: /projects/che-dashboard
+        type: exec
+        command: yarn install
+        component: dashboard-dev
+  - name: '[UD] compile'
     actions:
-      - type: exec
-        component: dash-dev
-        command: yarn build
-        workdir: /projects/che-dashboard
+      - workdir: /projects/che-dashboard
+        type: exec
+        command: yarn install --non-interactive && yarn compile
+        component: dashboard-dev
   - name: '[UD] test'
     actions:
-      - type: exec
-        component: dash-dev
-        command: yarn test
-        workdir: /projects/che-dashboard
-  - name: '[UD] start dev-server'
+      - workdir: /projects/che-dashboard
+        type: exec
+        command: yarn install --non-interactive && yarn test
+        component: dashboard-dev
+  - name: '[UD] start'
     actions:
-      - type: exec
-        component: dash-dev
-        command: npx gulp serve --server=${CHE_API_EXTERNAL%????}
-        workdir: /projects/che-dashboard
+      - workdir: /projects/che-dashboard
+        type: exec
+        command: 'yarn install --non-interactive && yarn start --env.server=${CHE_API_INTERNAL%????} --env.token=${CHE_MACHINE_TOKEN}'
+        component: dashboard-dev
+  - name: '[UD] start [API Backend che.openshift.io]'
+    actions:
+      - workdir: /projects/che-dashboard
+        type: exec
+        command: yarn install --non-interactive && yarn start
+        component: dashboard-dev

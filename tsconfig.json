@@ -1,16 +1,28 @@
 {
   "compilerOptions": {
-    "target": "es6",
-    "module": "commonjs",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "jsx": "react",
+    "module": "esnext",
+    "noImplicitAny": false,
+    "outDir": "./build/",
+    "preserveConstEnums": true,
+    "removeComments": true,
+    "sourceMap": true,
+    "target": "ES2018",
+    "lib": ["ES2018", "dom"],
     "skipLibCheck": true,
-    "lib": ["es6", "dom"],
-    "typeRoots": [
-      "node_modules/@types"
-    ]
+    "types": ["reflect-metadata", "jest", "@testing-library/jest-dom"],
+    "typeRoots": ["node_modules/@types", "./src/typings", "node_modules/@eclipse-che"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
+    "moduleResolution": "node",
+    "allowJs": true,
+    "resolveJsonModule": true
   },
-  "exclude": [
-    "node_modules",
-    "target"
+  "include": [
+    "./src/**/*.tsx",
+    "./src/**/*.ts"
   ]
-
 }

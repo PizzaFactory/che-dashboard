@@ -17,9 +17,9 @@ stages:
         steps:
           - task: NodeTool@0
             inputs:
-              versionSpec: '10.x' # replace this value with the version that you need for your project
+              versionSpec: '12.x' # replace this value with the version that you need for your project
           
-          - script: yarn && yarn build
+          - script: yarn && yarn compile:source-map
             displayName: yarn (build)
           
           - script: yarn test

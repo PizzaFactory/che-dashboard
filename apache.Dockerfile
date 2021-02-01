@@ -7,33 +7,14 @@
 #
 # Contributors:
 #   Red Hat, Inc. - initial API and implementation
-
-FROM docker.io/node:8.16.2 as builder
-
-
-RUN apt-get update \
-    && apt-get install -y git curl \
-    && if [ "$(uname -m)" = "s390x" ]; then apt-get install -y phantomjs; fi \
-    && apt-get -y clean \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN if [ "$(uname -m)" = "ppc64le" ]; then \
-     mkdir /tmp/phantomjs \
-     && curl -Ls "https://github.com/ibmsoe/phantomjs/releases/download/2.1.1/phantomjs-2.1.1-linux-ppc64.tar.bz2" | tar -xj --strip-components=1 -C /tmp/phantomjs \
-     && cd /tmp/phantomjs \
-     && mv bin/phantomjs /usr/local/bin \
-     && rm -rf /tmp/phantomjs; fi
+FROM docker.io/node:12.20.1 as builder
 
 COPY package.json /dashboard/
 COPY yarn.lock /dashboard/
-
 WORKDIR /dashboard
-RUN if [ "$(uname -m)" = "s390x" ]; then export QT_QPA_PLATFORM=offscreen; fi \ 
-    && yarn install --ignore-optional
+RUN yarn --network-timeout 600000 && yarn install
 COPY . /dashboard/
-
-RUN if [ "$(uname -m)" = "ppc64le" ] || [ "$(uname -m)" = "s390x" ]; then yarn build; else \
-    yarn build && yarn test; fi
+RUN yarn compile
 
 FROM docker.io/httpd:2.4.43-alpine
 RUN sed -i 's|    AllowOverride None|    AllowOverride All|' /usr/local/apache2/conf/httpd.conf && \
@@ -41,6 +22,7 @@ RUN sed -i 's|    AllowOverride None|    AllowOverride All|' /usr/local/apache2/
     mkdir -p /var/www && ln -s /usr/local/apache2/htdocs /var/www/html && \
     chmod -R g+rwX /usr/local/apache2 && \
     echo "ServerName localhost" >> /usr/local/apache2/conf/httpd.conf
-COPY --from=builder /dashboard/target/dist/ /usr/local/apache2/htdocs/dashboard
+
+COPY --from=builder /dashboard/build /usr/local/apache2/htdocs/dashboard
 RUN sed -i -r -e 's#<base href="/">#<base href="/dashboard/"#g'  /usr/local/apache2/htdocs/dashboard/index.html
 ADD wpa-resources/* /usr/local/apache2/htdocs/dashboard/
