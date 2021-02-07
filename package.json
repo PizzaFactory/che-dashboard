@@ -36,8 +36,7 @@
     "licenseCheck:run": "license-tool/run.sh"
   },
   "dependencies": {
-    "@eclipse-che/workspace-client": "^0.0.1-1608729566",
-    "@patternfly/patternfly": "^4.10.31",
+    "@eclipse-che/workspace-client": "^0.0.1-1612278649",
     "@patternfly/react-core": "~4.84.4",
     "@patternfly/react-icons": "^4.3.5",
     "@patternfly/react-table": "^4.5.7",
@@ -72,6 +71,7 @@
     "redux-thunk": "^2.3.0",
     "reflect-metadata": "^0.1.13",
     "reselect": "^4.0.0",
+    "sanitize-html": "2.3.2",
     "sockjs-client": "^1.4.0",
     "umd-compat-loader": "2.1.1",
     "yaml-language-server": "^0.13.0"
