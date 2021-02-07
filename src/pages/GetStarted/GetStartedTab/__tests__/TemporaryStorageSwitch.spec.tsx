@@ -88,7 +88,9 @@ function createFakeStore(metadata?: che.DevfileMetaData[]): Store {
       filter: ''
     },
     user: {} as any,
+    userProfile: {} as any,
     infrastructureNamespace: {} as any,
+    environment: {} as any,
     userPreferences: {} as any,
   };
   const middleware = [thunk];
