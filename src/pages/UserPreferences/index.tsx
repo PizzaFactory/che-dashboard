@@ -100,6 +100,13 @@ export class UserPreferences extends React.PureComponent<Props, State> {
     }
   }
 
+  public componentDidMount(): void {
+    const { preferences, isLoading, requestUserPreferences } = this.props;
+    if (!isLoading && !preferences.dockerCredentials) {
+      requestUserPreferences(undefined);
+    }
+  }
+
   public componentDidUpdate(prevProps: Props, prevState: State): void {
     if (prevProps.preferences.dockerCredentials !== this.props.preferences.dockerCredentials) {
       const registries = this.props.registries;
@@ -129,8 +136,17 @@ export class UserPreferences extends React.PureComponent<Props, State> {
   private buildRegistryRow(registry: RegistryRow): React.ReactNode[] {
     const { url, username } = registry;
 
+    if (/^http[s]?:\/\/.*/.test(url)) {
+      return [
+        <span key="host">
+          <a href={url} target="_blank" rel="noreferrer">{url}</a>
+        </span>,
+        <span key="username">{username}</span>,
+      ];
+    }
+
     return [
-      <span key="host"><a href={url} target="_blank" rel="noreferrer">{url}</a></span>,
+      <span key="host">{url}</span>,
       <span key="username">{username}</span>,
     ];
   }
