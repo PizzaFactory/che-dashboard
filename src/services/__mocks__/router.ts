@@ -10,31 +10,33 @@
  *   Red Hat, Inc. - initial API and implementation
  */
 
-import { createLocation, createMemoryHistory, Location, LocationState } from 'history';
-import { MemoryHistory } from 'history/createMemoryHistory';
-import { match as routerMatch } from 'react-router';
+import { createLocation, createMemoryHistory } from 'history';
+import { match as routerMatch, RouteComponentProps } from 'react-router';
 
-const generateUrl = <Params extends { [K in keyof Params]?: string } = {}>(path: string, params: Params): string => {
+const generateUrl = <Params>(path: string, params: Params): string => {
   let resultPath = path;
   for (const param in params) {
     if (params[param]) {
       resultPath = resultPath.replace(`:${param}`, `${params[param]}`);
+    } else {
+      resultPath = resultPath.replace(`:${param}`, '');
     }
   }
   return resultPath;
 };
 
-export const getMockRouterProps = <Params extends { [K in keyof Params]: string } = {}>(path: string, params: Params): {
-  history: MemoryHistory<LocationState>;
-  location: Location<LocationState>;
-  match: routerMatch<Params>
-} => {
+export function getMockRouterProps<Params>(path: string, params: Params): RouteComponentProps<Params> {
   const isExact = false;
   const url = generateUrl(path, params);
 
   const match: routerMatch<Params> = { isExact, path, url, params };
   const history = createMemoryHistory();
   const location = createLocation(match.url);
+  history.location = location;
 
-  return { history, location, match };
-};
+  return {
+    history,
+    location,
+    match,
+  };
+}

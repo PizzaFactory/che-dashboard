@@ -16,12 +16,12 @@ import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 import { createHashHistory } from 'history';
 import '@patternfly/react-core/dist/styles/base.css';
+import '@patternfly/patternfly/patternfly-addons.css';
 import 'monaco-editor-core/esm/vs/base/browser/ui/codiconLabel/codicon/codicon.css';
 import configureStore from './store/configureStore';
 import App from './App';
 import { PreloadData } from './services/bootstrap/PreloadData';
 
-import '@patternfly/patternfly/patternfly-addons.css';
 import './overrides.styl';
 
 const history = createHashHistory();
@@ -32,7 +32,7 @@ const ROOT = document.querySelector('.ui-container');
 // preload app data
 new PreloadData(store).init()
   .then(() => console.log('UD: preload data complete successfully.'))
-  .catch(error => console.log('UD: preload data failed.', error))
+  .catch(error => console.error('UD: preload data failed.', error))
   .finally(() => {
     ReactDOM.render(<Provider store={store}><App history={history} /></Provider>, ROOT);
   });
