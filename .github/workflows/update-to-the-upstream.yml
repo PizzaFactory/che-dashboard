@@ -22,6 +22,7 @@ jobs:
         git fetch --all
         git checkout -b prp-update-to-the-upstream
         git merge up/master -m 'Update to the upstream.'
+        git push -u origin prp-update-to-the-upstream
     - name: create PR
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
