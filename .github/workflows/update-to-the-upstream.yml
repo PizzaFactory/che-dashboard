@@ -23,6 +23,8 @@ jobs:
         git checkout -b prp-update-to-the-upstream
         git merge up/master -m 'Update to the upstream.'
     - name: create PR
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         gh pr create -B azure-pipelines -t "[Scheduled] Update to the upstream" -b ''
     - name: Notify to Google Chat
