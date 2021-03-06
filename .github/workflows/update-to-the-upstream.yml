@@ -3,6 +3,8 @@ name: UpdateToTheUpstream
 on:
   schedule:
     - cron: "10 6 * * 5"
+  workflow_dispatch:
+
 jobs:
   pr-for-merging-upstream:
 
