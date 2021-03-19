@@ -15,11 +15,17 @@ import * as api from '@eclipse-che/api';
 import { ThunkDispatch } from 'redux-thunk';
 import { AppThunk } from '../';
 import { container } from '../../inversify.config';
-import { CheWorkspaceClient } from '../../services/cheWorkspaceClient';
+import { CheWorkspaceClient } from '../../services/workspace-client/cheWorkspaceClient';
 import { WorkspaceStatus } from '../../services/helpers/types';
 import { createState } from '../helpers';
+import { isDevWorkspace } from '../../services/helpers/devworkspace';
+import { DevWorkspaceClient, IStatusUpdate } from '../../services/workspace-client/devWorkspaceClient';
+import { IDevWorkspaceDevfile } from '@eclipse-che/devworkspace-client';
+import { KeycloakAuthService } from '../../services/keycloak/auth';
 
-const WorkspaceClient = container.get(CheWorkspaceClient);
+const cheWorkspaceClient = container.get(CheWorkspaceClient);
+const devWorkspaceClient = container.get(DevWorkspaceClient);
+const keycloakAuthService = container.get(KeycloakAuthService);
 
 // This state defines the type of data maintained in the Redux store.
 export interface State {
@@ -125,11 +131,12 @@ export type ResourceQueryParams = {
   [propName: string]: string | boolean | undefined;
 }
 export type ActionCreators = {
+  updateDevWorkspaceStatus: (workspace: che.Workspace, message: IStatusUpdate) => AppThunk<KnownAction, Promise<void>>;
   requestWorkspaces: () => AppThunk<KnownAction, Promise<void>>;
-  requestWorkspace: (workspaceId: string) => AppThunk<KnownAction, Promise<void>>;
-  startWorkspace: (workspaceId: string, params?: ResourceQueryParams) => AppThunk<KnownAction, Promise<void>>;
-  stopWorkspace: (workspaceId: string) => AppThunk<KnownAction, Promise<void>>;
-  deleteWorkspace: (workspaceId: string) => AppThunk<KnownAction, Promise<void>>;
+  requestWorkspace: (workspace: che.Workspace) => AppThunk<KnownAction, Promise<void>>;
+  startWorkspace: (workspace: che.Workspace, params?: ResourceQueryParams) => AppThunk<KnownAction, Promise<void>>;
+  stopWorkspace: (workspace: che.Workspace) => AppThunk<KnownAction, Promise<void>>;
+  deleteWorkspace: (workspace: che.Workspace) => AppThunk<KnownAction, Promise<void>>;
   updateWorkspace: (workspace: che.Workspace) => AppThunk<KnownAction, Promise<void>>;
   createWorkspaceFromDevfile: (
     devfile: api.che.workspace.devfile.Devfile,
@@ -151,35 +158,44 @@ type EnvironmentOutputMessageHandler = (message: api.che.workspace.event.Runtime
 const subscribedWorkspaceStatusCallbacks = new Map<string, WorkspaceStatusMessageHandler>();
 const subscribedEnvironmentOutputCallbacks = new Map<string, EnvironmentOutputMessageHandler>();
 
+function onStatusUpdateReceived(
+  workspace: che.Workspace,
+  dispatch: ThunkDispatch<State, undefined, UpdateWorkspaceStatusAction | UpdateWorkspacesLogsAction | DeleteWorkspaceLogsAction>,
+  message: any) {
+  let status: string;
+  if (message.error) {
+    const workspacesLogs = new Map<string, string[]>();
+    workspacesLogs.set(workspace.id, [`Error: Failed to run the workspace: "${message.error}"`]);
+    dispatch({
+      type: 'UPDATE_WORKSPACES_LOGS',
+      workspacesLogs,
+    });
+    status = WorkspaceStatus[WorkspaceStatus.ERROR];
+  } else {
+    status = message.status;
+  }
+  if (WorkspaceStatus[status]) {
+    dispatch({
+      type: 'UPDATE_WORKSPACE_STATUS',
+      workspaceId: workspace.id,
+      status,
+    });
+  }
+  if (!isDevWorkspace(workspace) && WorkspaceStatus[WorkspaceStatus.STARTING] !== status) {
+    unSubscribeToEnvironmentOutput(workspace.id);
+  }
+}
+
 function subscribeToStatusChange(
-  workspaceId: string,
+  workspace: che.Workspace,
   dispatch: ThunkDispatch<State, undefined, UpdateWorkspaceStatusAction | UpdateWorkspacesLogsAction | DeleteWorkspaceLogsAction>): void {
-  const callback = message => {
-    let status: string;
-    if (message.error) {
-      const workspacesLogs = new Map<string, string[]>();
-      workspacesLogs.set(workspaceId, [`Error: Failed to run the workspace: "${message.error}"`]);
-      dispatch({
-        type: 'UPDATE_WORKSPACES_LOGS',
-        workspacesLogs,
-      });
-      status = WorkspaceStatus[WorkspaceStatus.ERROR];
-    } else {
-      status = message.status;
-    }
-    if (WorkspaceStatus[status]) {
-      dispatch({
-        type: 'UPDATE_WORKSPACE_STATUS',
-        workspaceId,
-        status,
-      });
-    }
-    if (WorkspaceStatus[WorkspaceStatus.STARTING] !== status) {
-      unSubscribeToEnvironmentOutput(workspaceId);
-    }
-  };
-  WorkspaceClient.jsonRpcMasterApi.subscribeWorkspaceStatus(workspaceId, callback);
-  subscribedWorkspaceStatusCallbacks.set(workspaceId, callback);
+
+  if (subscribedWorkspaceStatusCallbacks.has(workspace.id)) {
+    return;
+  }
+  const callback = (message: any) => onStatusUpdateReceived(workspace, dispatch, message);
+  cheWorkspaceClient.jsonRpcMasterApi.subscribeWorkspaceStatus(workspace.id, callback);
+  subscribedWorkspaceStatusCallbacks.set(workspace.id, callback);
 }
 
 function unSubscribeToStatusChange(workspaceId: string): void {
@@ -187,15 +203,18 @@ function unSubscribeToStatusChange(workspaceId: string): void {
   if (!callback) {
     return;
   }
-  WorkspaceClient.jsonRpcMasterApi.unSubscribeWorkspaceStatus(workspaceId, callback);
+  cheWorkspaceClient.jsonRpcMasterApi.unSubscribeWorkspaceStatus(workspaceId, callback);
   subscribedWorkspaceStatusCallbacks.delete(workspaceId);
 }
 
 function subscribeToEnvironmentOutput(workspaceId: string, dispatch: ThunkDispatch<State, undefined, UpdateWorkspacesLogsAction | DeleteWorkspaceLogsAction>): void {
+  if (subscribedEnvironmentOutputCallbacks.has(workspaceId)) {
+    return;
+  }
   const callback: EnvironmentOutputMessageHandler = message => {
     if (message.runtimeId?.workspaceId === workspaceId && message.text) {
       const workspacesLogs = new Map<string, string[]>();
-      workspacesLogs.set(workspaceId, [`${message.text}`]);
+      workspacesLogs.set(workspaceId, message.text.split(new RegExp('\\r\\n|\\r|\\n')));
       dispatch({
         type: 'UPDATE_WORKSPACES_LOGS',
         workspacesLogs,
@@ -206,7 +225,7 @@ function subscribeToEnvironmentOutput(workspaceId: string, dispatch: ThunkDispat
     type: 'DELETE_WORKSPACE_LOGS',
     workspaceId,
   });
-  WorkspaceClient.jsonRpcMasterApi.subscribeEnvironmentOutput(workspaceId, callback);
+  cheWorkspaceClient.jsonRpcMasterApi.subscribeEnvironmentOutput(workspaceId, callback);
   subscribedEnvironmentOutputCallbacks.set(workspaceId, callback);
 }
 
@@ -215,7 +234,7 @@ function unSubscribeToEnvironmentOutput(workspaceId: string): void {
   if (!callback) {
     return;
   }
-  WorkspaceClient.jsonRpcMasterApi.unSubscribeEnvironmentOutput(workspaceId, callback);
+  cheWorkspaceClient.jsonRpcMasterApi.unSubscribeEnvironmentOutput(workspaceId, callback);
   subscribedEnvironmentOutputCallbacks.delete(workspaceId);
 }
 
@@ -223,23 +242,52 @@ function unSubscribeToEnvironmentOutput(workspaceId: string): void {
 // They don't directly mutate state, but they can have external side-effects (such as loading data).
 export const actionCreators: ActionCreators = {
 
-  requestWorkspaces: (): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
+  updateDevWorkspaceStatus: (workspace: che.Workspace, message: IStatusUpdate): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
+    onStatusUpdateReceived(workspace, dispatch, message);
+  },
+
+  requestWorkspaces: (): AppThunk<KnownAction, Promise<void>> => async (dispatch, getState): Promise<void> => {
     dispatch({ type: 'REQUEST_WORKSPACES' });
 
     try {
-      const workspaces = await WorkspaceClient.restApiClient.getAll<che.Workspace>();
+      const state = getState();
+      const workspaces = await cheWorkspaceClient.restApiClient.getAll<che.Workspace>();
+      const defaultNamespace = await cheWorkspaceClient.getDefaultNamespace();
+      let allWorkspaces = workspaces;
+      const cheDevworkspaceEnabled = state.workspaces.settings['che.devworkspaces.enabled'] === 'true';
+      if (cheDevworkspaceEnabled) {
+        const devworkspaces = await devWorkspaceClient.getAllWorkspaces(defaultNamespace);
+        allWorkspaces = allWorkspaces.concat(devworkspaces);
+      }
 
-      // Unsubscribe
+      const workspaceIds = workspaces.map(workspace => workspace.id);
+
+      // Unsubscribe status change
       subscribedWorkspaceStatusCallbacks.forEach((workspaceStatusCallback: WorkspaceStatusMessageHandler, workspaceId: string) => {
-        unSubscribeToStatusChange(workspaceId);
+        if (workspaceIds.indexOf(workspaceId) === -1) {
+          unSubscribeToStatusChange(workspaceId);
+        }
+      });
+
+      // Only subscribe to v1 workspaces
+      workspaces.forEach(workspace => subscribeToStatusChange(workspace, dispatch));
+      // Unsubscribe environment output
+      subscribedEnvironmentOutputCallbacks.forEach((environmentOutputCallback: EnvironmentOutputMessageHandler, workspaceId: string) => {
+        if (workspaceIds.indexOf(workspaceId) === -1) {
+          unSubscribeToEnvironmentOutput(workspaceId);
+        }
       });
 
       // Subscribe
       workspaces.forEach(workspace => {
-        subscribeToStatusChange(workspace.id, dispatch);
+        subscribeToStatusChange(workspace, dispatch);
+
+        if (WorkspaceStatus[WorkspaceStatus.STARTING] === workspace.status) {
+          subscribeToEnvironmentOutput(workspace.id, dispatch);
+        }
       });
 
-      dispatch({ type: 'RECEIVE_WORKSPACES', workspaces });
+      dispatch({ type: 'RECEIVE_WORKSPACES', workspaces: allWorkspaces });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
       throw new Error('Failed to request workspaces: \n' + e);
@@ -247,11 +295,28 @@ export const actionCreators: ActionCreators = {
 
   },
 
-  requestWorkspace: (workspaceId: string): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
+  requestWorkspace: (cheWorkspace: che.Workspace): AppThunk<KnownAction, Promise<void>> => async (dispatch, getState): Promise<void> => {
     dispatch({ type: 'REQUEST_WORKSPACES' });
 
     try {
-      const workspace = await WorkspaceClient.restApiClient.getById<che.Workspace>(workspaceId);
+      const state = getState();
+      let workspace: che.Workspace;
+      const cheDevworkspaceEnabled = state.workspaces.settings['che.devworkspaces.enabled'] === 'true';
+      if (cheDevworkspaceEnabled && isDevWorkspace(cheWorkspace)) {
+        const namespace = cheWorkspace.namespace as string;
+        const name = cheWorkspace.devfile.metadata.name;
+        workspace = await devWorkspaceClient.getWorkspaceByName(namespace, name);
+      } else {
+        workspace = await cheWorkspaceClient.restApiClient.getById<che.Workspace>(cheWorkspace.id);
+      }
+      if (!subscribedWorkspaceStatusCallbacks.has(workspace.id)) {
+        subscribeToStatusChange(workspace, dispatch);
+      }
+      if (workspace.status === WorkspaceStatus[WorkspaceStatus.STARTING]) {
+        subscribeToEnvironmentOutput(cheWorkspace.id, dispatch);
+      } else {
+        unSubscribeToEnvironmentOutput(cheWorkspace.id);
+      }
       dispatch({ type: 'UPDATE_WORKSPACE', workspace });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
@@ -264,7 +329,13 @@ export const actionCreators: ActionCreators = {
     dispatch({ type: 'REQUEST_WORKSPACES' });
 
     try {
-      const settings = await WorkspaceClient.restApiClient.getSettings<che.WorkspaceSettings>();
+      const settings = await cheWorkspaceClient.restApiClient.getSettings<che.WorkspaceSettings>();
+
+      // todo remove when server returns property https://github.com/eclipse/che/issues/19160#issuecomment-788753847
+      if (settings['che.devworkspaces.enabled'] === undefined) {
+        settings['che.devworkspaces.enabled'] = 'false';
+      }
+
       dispatch({ type: 'RECEIVE_SETTINGS', settings });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
@@ -272,10 +343,19 @@ export const actionCreators: ActionCreators = {
     }
   },
 
-  startWorkspace: (workspaceId: string, params?: ResourceQueryParams): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
+  startWorkspace: (cheWorkspace: che.Workspace, params?: ResourceQueryParams): AppThunk<KnownAction, Promise<void>> => async (dispatch, getState): Promise<void> => {
     try {
-      const workspace = await WorkspaceClient.restApiClient.start<che.Workspace>(workspaceId, params);
-      subscribeToEnvironmentOutput(workspaceId, dispatch);
+      const state = getState();
+      let workspace: che.Workspace;
+      const cheDevworkspaceEnabled = state.workspaces.settings['che.devworkspaces.enabled'] === 'true';
+      if (cheDevworkspaceEnabled && isDevWorkspace(cheWorkspace)) {
+        workspace = await devWorkspaceClient.changeWorkspaceStatus(cheWorkspace.namespace as string, cheWorkspace.devfile.metadata.name as string, true);
+      } else {
+        await keycloakAuthService.forceUpdateToken();
+        workspace = await cheWorkspaceClient.restApiClient.start<che.Workspace>(cheWorkspace.id, params);
+        dispatch({ type: 'DELETE_WORKSPACE_LOGS', workspaceId: workspace.id });
+        subscribeToEnvironmentOutput(cheWorkspace.id, dispatch);
+      }
       dispatch({ type: 'UPDATE_WORKSPACE', workspace });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
@@ -283,20 +363,35 @@ export const actionCreators: ActionCreators = {
     }
   },
 
-  stopWorkspace: (workspaceId: string): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
+  stopWorkspace: (workspace: che.Workspace): AppThunk<KnownAction, Promise<void>> => async (dispatch, getState): Promise<void> => {
     try {
-      await WorkspaceClient.restApiClient.stop(workspaceId);
+      const state = getState();
+      const cheDevworkspaceEnabled = state.workspaces.settings['che.devworkspaces.enabled'] === 'true';
+      if (cheDevworkspaceEnabled && isDevWorkspace(workspace)) {
+        devWorkspaceClient.changeWorkspaceStatus(workspace.namespace as string, workspace.devfile.metadata.name as string, false);
+      } else {
+        cheWorkspaceClient.restApiClient.stop(workspace.id);
+      }
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
-      throw new Error(`Failed to stop the workspace, ID: ${workspaceId}, ` + e.message);
+      throw new Error(`Failed to stop the workspace, ID: ${workspace.id}, ` + e.message);
     }
   },
 
-  deleteWorkspace: (workspaceId: string): AppThunk<KnownAction, Promise<void>> => async (dispatch): Promise<void> => {
+  deleteWorkspace: (workspace: che.Workspace): AppThunk<KnownAction, Promise<void>> => async (dispatch, getState): Promise<void> => {
     try {
-      await WorkspaceClient.restApiClient.delete(workspaceId);
-      dispatch({ type: 'DELETE_WORKSPACE_LOGS', workspaceId });
-      dispatch({ type: 'DELETE_WORKSPACE', workspaceId });
+      const state = getState();
+      const cheDevworkspaceEnabled = state.workspaces.settings['che.devworkspaces.enabled'] === 'true';
+      if (cheDevworkspaceEnabled && isDevWorkspace(workspace)) {
+        const namespace = workspace.namespace as string;
+        const name = workspace.devfile.metadata.name;
+        await devWorkspaceClient.delete(namespace, name);
+        dispatch({ type: 'DELETE_WORKSPACE', workspaceId: workspace.id });
+      } else {
+        await cheWorkspaceClient.restApiClient.delete(workspace.id);
+        dispatch({ type: 'DELETE_WORKSPACE_LOGS', workspaceId: workspace.id });
+        dispatch({ type: 'DELETE_WORKSPACE', workspaceId: workspace.id });
+      }
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
 
@@ -316,7 +411,7 @@ export const actionCreators: ActionCreators = {
         message = 'Unknown error.';
       }
 
-      throw new Error(`Failed to delete the workspace, ID: ${workspaceId}. ` + message);
+      throw new Error(`Failed to delete the workspace, ID: ${workspace.id}. ` + message);
     }
   },
 
@@ -324,7 +419,7 @@ export const actionCreators: ActionCreators = {
     dispatch({ type: 'REQUEST_WORKSPACES' });
 
     try {
-      const updatedWorkspace = await WorkspaceClient.restApiClient.update<che.Workspace>(workspace.id, workspace as api.che.workspace.Workspace);
+      const updatedWorkspace = await cheWorkspaceClient.restApiClient.update<che.Workspace>(workspace.id, workspace as api.che.workspace.Workspace);
       dispatch({ type: 'UPDATE_WORKSPACE', workspace: updatedWorkspace });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
@@ -334,19 +429,34 @@ export const actionCreators: ActionCreators = {
   },
 
   createWorkspaceFromDevfile: (
-    devfile: api.che.workspace.devfile.Devfile,
+    devfile: api.che.workspace.devfile.Devfile | IDevWorkspaceDevfile,
     namespace: string | undefined,
     infrastructureNamespace: string | undefined,
     attributes: { [key: string]: string } = {},
-  ): AppThunk<KnownAction, Promise<che.Workspace>> => async (dispatch): Promise<che.Workspace> => {
+  ): AppThunk<KnownAction, Promise<che.Workspace>> => async (dispatch, getState): Promise<che.Workspace> => {
     dispatch({ type: 'REQUEST_WORKSPACES' });
     try {
+      const state = getState();
       const param = { attributes, namespace, infrastructureNamespace };
-      const workspace = await WorkspaceClient.restApiClient.create<che.Workspace>(devfile, param);
-      dispatch({ type: 'ADD_WORKSPACE', workspace });
-      // Subscribe
-      subscribeToStatusChange(workspace.id, dispatch);
+      let workspace: che.Workspace;
+      const cheDevworkspaceEnabled = state.workspaces.settings['che.devworkspaces.enabled'] === 'true';
+      if (cheDevworkspaceEnabled && isDevWorkspace(devfile)) {
+        // If the devworkspace doesn't have a namespace then we assign it to the default kubernetesNamespace
+        const devWorkspaceDevfile = devfile as IDevWorkspaceDevfile;
+        if (!devWorkspaceDevfile.metadata.namespace) {
+          const defaultNamespace = await cheWorkspaceClient.getDefaultNamespace();
+          devWorkspaceDevfile.metadata.namespace = defaultNamespace;
+        }
 
+        const dwPlugins = state.dwPlugins.plugins;
+        workspace = await devWorkspaceClient.create(devWorkspaceDevfile, dwPlugins);
+      } else {
+        workspace = await cheWorkspaceClient.restApiClient.create<che.Workspace>(devfile, param);
+
+        // Subscribe
+        subscribeToStatusChange(workspace, dispatch);
+      }
+      dispatch({ type: 'ADD_WORKSPACE', workspace });
       return workspace;
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
@@ -401,14 +511,14 @@ const unloadedState: State = {
   recentNumber: 5,
 };
 
-const mapMerge = (originMap: Map<string, string[]>, additionalMap: Map<string, string[]>): Map<string, string[]> => {
+export const mapMerge = (originMap: Map<string, string[]>, additionalMap: Map<string, string[]>): Map<string, string[]> => {
   if (!originMap.size) {
     return additionalMap;
   }
   const res = new Map<string, string[]>();
   originMap.forEach((val: string[], key: string) => {
     const merge = (val: string[], newVal: string[] | undefined): string[] => {
-      if (!newVal || (val.length > 0 && newVal.length === 1 && val[val.length - 1] === newVal[0])) {
+      if (!newVal) {
         return val;
       }
       return val.concat(newVal);
@@ -424,9 +534,6 @@ const mapMerge = (originMap: Map<string, string[]>, additionalMap: Map<string, s
 };
 
 const mapDeleteKey = (originMap: Map<string, string[]>, key: string): Map<string, string[]> => {
-  if (!originMap.size) {
-    return originMap;
-  }
   const res = new Map<string, string[]>(originMap.entries());
   res.delete(key);
   return res;
