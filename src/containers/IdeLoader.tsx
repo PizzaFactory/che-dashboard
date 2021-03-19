@@ -21,9 +21,12 @@ import { Debounce } from '../services/helpers/debounce';
 import { delay } from '../services/helpers/delay';
 import { IdeLoaderTab, WorkspaceStatus } from '../services/helpers/types';
 import { AppState } from '../store';
-import { selectIsDevelopment } from '../store/Environment/selectors';
+import { getEnvironment, isDevEnvironment } from '../services/helpers/environment';
 import * as WorkspaceStore from '../store/Workspaces';
 import { selectAllWorkspaces, selectIsLoading, selectLogs, selectWorkspaceById } from '../store/Workspaces/selectors';
+import { validateMachineToken } from '../services/validate-token';
+import { buildWorkspacesPath } from '../services/helpers/location';
+import { DisposableCollection } from '../services/helpers/disposable';
 
 type Props =
   MappedProps
@@ -54,9 +57,14 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
   private readonly loadFactoryPageCallbacks: {
     showAlert?: (alertOptions: AlertOptions) => void
   };
+  private isDevEnvironment: boolean;
+  private readonly toDispose = new DisposableCollection();
 
   constructor(props: Props) {
     super(props);
+
+    const env = getEnvironment();
+    this.isDevEnvironment = isDevEnvironment(env);
 
     this.loadFactoryPageCallbacks = {};
     const { match: { params }, history } = this.props;
@@ -78,8 +86,14 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
       preselectedTabKey: this.preselectedTabKey,
     };
 
-    this.debounce.subscribe(async () => {
+    const callback = async () => {
       await this.initWorkspace();
+    };
+    this.debounce.subscribe(callback);
+    this.toDispose.push({
+      dispose: () => {
+        this.debounce.unsubscribe(callback);
+      },
     });
   }
 
@@ -120,7 +134,7 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
   }
 
   public async componentWillUnmount(): Promise<void> {
-    this.debounce.unsubscribeAll();
+    this.toDispose.dispose();
   }
 
   public async componentDidMount(): Promise<void> {
@@ -138,6 +152,42 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
       this.showErrorAlert(workspace);
     }
     this.debounce.setDelay(1000);
+
+    const handleMessage = async (event: MessageEvent): Promise<void> => {
+      if (typeof event.data !== 'string') {
+        return;
+      }
+      if (event.data === 'show-workspaces') {
+        const pathname = buildWorkspacesPath();
+        this.props.history.push({ pathname });
+        window.postMessage('show-navbar', '*');
+      } else if (event.data.startsWith('restart-workspace:')) {
+        const { allWorkspaces, match: { params } } = this.props;
+        const workspace = allWorkspaces.find(workspace =>
+          workspace.namespace === params.namespace && workspace.devfile.metadata.name === this.workspaceName);
+        if (!workspace) {
+          return;
+        }
+        const [, workspaceId, machineToken] = event.data.split(':');
+        if (workspace.id !== workspaceId) {
+          return;
+        }
+        try {
+          await validateMachineToken(workspace.id, machineToken);
+          await this.props.stopWorkspace(workspace);
+          await this.props.requestWorkspace(workspace);
+          window.postMessage('show-navbar', '*');
+        } catch (error) {
+          console.error('Machine token validation failed. ', error);
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage, false);
+    this.toDispose.push({
+      dispose: () => {
+        window.removeEventListener('message', handleMessage);
+      },
+    });
   }
 
   private showErrorAlert(workspace: che.Workspace) {
@@ -153,7 +203,7 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
 
   public async componentDidUpdate(prevProps: Props, prevState: State): Promise<void> {
     const { allWorkspaces, match: { params } } = this.props;
-    const { hasError } = this.state;
+    const { hasError, currentStep } = this.state;
     const workspace = allWorkspaces.find(workspace =>
       workspace.namespace === params.namespace
       && workspace.devfile.metadata.name === this.workspaceName);
@@ -192,6 +242,8 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
         currentStep: LoadIdeSteps.INITIALIZING,
         workspaceId: workspace.id,
       });
+    } else if (currentStep === LoadIdeSteps.OPEN_IDE && workspace.status === WorkspaceStatus[WorkspaceStatus.STOPPED]) {
+      this.setState({ currentStep: LoadIdeSteps.INITIALIZING, ideUrl: undefined });
     }
     this.debounce.setDelay(1000);
   }
@@ -224,7 +276,7 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
 
   private async verboseModeHandler(workspace: che.Workspace) {
     try {
-      await this.props.startWorkspace(workspace.id, { 'debug-workspace-start': true });
+      await this.props.startWorkspace(workspace, { 'debug-workspace-start': true });
       this.props.deleteWorkspaceLogs(workspace.id);
       this.setState({
         currentStep: LoadIdeSteps.INITIALIZING,
@@ -267,7 +319,7 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
       this.showAlert('Don\'t know what to open, IDE url is not defined.');
       return;
     }
-    if (this.props.isDevelopment) {
+    if (this.isDevEnvironment) {
       // workaround to open IDE in iframe while serving dashboard locally
       try {
         const windowRef = window.open(ideUrl);
@@ -280,16 +332,16 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
     this.setState({ currentStep: LoadIdeSteps.OPEN_IDE, ideUrl });
   }
 
-  private async openIDE(workspaceId: string): Promise<void> {
+  private async openIDE(cheWorkspace: che.Workspace): Promise<void> {
     this.setState({ currentStep: LoadIdeSteps.OPEN_IDE });
     try {
-      await this.props.requestWorkspace(workspaceId);
+      await this.props.requestWorkspace(cheWorkspace);
     } catch (e) {
       this.showAlert(`Getting workspace detail data failed. ${e}`);
       return;
     }
     const workspace = this.props.allWorkspaces.find(workspace =>
-      workspace.id === workspaceId);
+      workspace.id === cheWorkspace.id);
     if (workspace && workspace.runtime) {
       await this.updateIdeUrl(workspace.runtime);
     }
@@ -304,7 +356,7 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
     if (namespace !== params.namespace || workspaceName !== this.workspaceName) {
       this.setState({
         currentStep: LoadIdeSteps.INITIALIZING,
-        hasError: workspace?.status === WorkspaceStatus[WorkspaceStatus.ERROR] ? true : false,
+        hasError: workspace?.status === WorkspaceStatus[WorkspaceStatus.ERROR],
         ideUrl: '',
         namespace: params.namespace,
         workspaceName: this.workspaceName,
@@ -318,7 +370,7 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
       this.setState({ workspaceId: workspace.id });
       if ((workspace.runtime || this.state.currentStep === LoadIdeSteps.START_WORKSPACE) &&
         workspace.status === WorkspaceStatus[WorkspaceStatus.RUNNING]) {
-        return this.openIDE(workspace.id);
+        return this.openIDE(workspace);
       }
     } else {
       if (this.props.workspace) {
@@ -329,9 +381,9 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
     }
     if (this.state.currentStep === LoadIdeSteps.INITIALIZING) {
       this.setState({ currentStep: LoadIdeSteps.START_WORKSPACE });
-      if (workspace.status === WorkspaceStatus[WorkspaceStatus.STOPPED] && (this.state.hasError !== true)) {
+      if (workspace.status === WorkspaceStatus[WorkspaceStatus.STOPPED] && !this.state.hasError) {
         try {
-          await this.props.startWorkspace(`${workspace.id}`);
+          await this.props.startWorkspace(workspace);
         } catch (e) {
           this.showAlert(`Workspace ${this.state.workspaceName} failed to start. ${e}`);
           return;
@@ -365,7 +417,6 @@ const mapStateToProps = (state: AppState) => ({
   allWorkspaces: selectAllWorkspaces(state),
   isLoading: selectIsLoading(state),
   workspacesLogs: selectLogs(state),
-  isDevelopment: selectIsDevelopment(state),
 });
 
 const connector = connect(

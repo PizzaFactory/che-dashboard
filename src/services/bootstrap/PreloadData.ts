@@ -16,15 +16,16 @@ import { KeycloakSetupService } from '../keycloak/setup';
 import { AppState } from '../../store';
 import * as BrandingStore from '../../store/Branding';
 import * as DevfileRegistriesStore from '../../store/DevfileRegistries';
-import * as EnvironmentStore from '../../store/Environment';
 import * as InfrastructureNamespaceStore from '../../store/InfrastructureNamespace';
 import * as Plugins from '../../store/Plugins';
+import * as DwPlugins from '../../store/DevWorkspacePlugins';
 import * as UserProfileStore from '../../store/UserProfile';
 import * as UserStore from '../../store/User';
 import * as WorkspacesStore from '../../store/Workspaces';
-import { CheWorkspaceClient } from '../cheWorkspaceClient';
 import { ResourceFetcherService } from '../resource-fetcher';
 import { IssuesReporterService } from './issuesReporter';
+import { CheWorkspaceClient } from '../workspace-client/cheWorkspaceClient';
+import { DevWorkspaceClient } from '../workspace-client/devWorkspaceClient';
 
 /**
  * This class prepares all init data.
@@ -41,6 +42,9 @@ export class PreloadData {
   @lazyInject(CheWorkspaceClient)
   private readonly cheWorkspaceClient: CheWorkspaceClient;
 
+  @lazyInject(DevWorkspaceClient)
+  private readonly devWorkspaceClient: DevWorkspaceClient;
+
   private store: Store<AppState>;
 
   constructor(store: Store<AppState>) {
@@ -48,15 +52,22 @@ export class PreloadData {
   }
 
   async init(): Promise<void> {
-    this.defineEnvironment();
-
     await this.updateUser();
     await this.updateJsonRpcMasterApi();
 
-    this.updateWorkspaces();
     new ResourceFetcherService().prefetchResources(this.store.getState());
 
     const settings = await this.updateWorkspaceSettings();
+
+    if (settings['che.devworkspaces.enabled'] === 'true') {
+      const defaultNamespace = await this.cheWorkspaceClient.getDefaultNamespace();
+      const namespaceInitialized = await this.initializeNamespace(defaultNamespace);
+      if (namespaceInitialized) {
+        this.watchNamespaces(defaultNamespace);
+      }
+      this.updateDwPlugins(settings);
+    }
+    this.updateWorkspaces();
     await Promise.all([
       this.updateBranding(),
       this.updateInfrastructureNamespaces(),
@@ -65,11 +76,6 @@ export class PreloadData {
       this.updateRegistriesMetadata(settings),
       this.updateDevfileSchema(),
     ]);
-  }
-
-  private defineEnvironment(): void {
-    const { defineEnvironmentMode } = EnvironmentStore.actionCreators;
-    defineEnvironmentMode()(this.store.dispatch, this.store.getState, undefined);
   }
 
   private async updateBranding(): Promise<void> {
@@ -83,6 +89,15 @@ export class PreloadData {
 
   private async updateJsonRpcMasterApi(): Promise<void> {
     return this.cheWorkspaceClient.updateJsonRpcMasterApi();
+  }
+
+  private async initializeNamespace(namespace: string): Promise<boolean> {
+    return this.devWorkspaceClient.initializeNamespace(namespace);
+  }
+
+  private async watchNamespaces(namespace: string): Promise<void> {
+    const { updateDevWorkspaceStatus } = WorkspacesStore.actionCreators;
+    return this.devWorkspaceClient.subscribeToNamespace(namespace, updateDevWorkspaceStatus, this.store.dispatch);
   }
 
   private async updateUser(): Promise<void> {
@@ -103,6 +118,18 @@ export class PreloadData {
   private async updatePlugins(settings: che.WorkspaceSettings): Promise<void> {
     const { requestPlugins } = Plugins.actionCreators;
     await requestPlugins(settings.cheWorkspacePluginRegistryUrl || '')(this.store.dispatch, this.store.getState);
+  }
+
+  private async updateDwPlugins(settings: che.WorkspaceSettings): Promise<void> {
+    const { requestDwDevfiles } = DwPlugins.actionCreators;
+
+    return Promise.all([
+      requestDwDevfiles(`${settings.cheWorkspacePluginRegistryUrl}/plugins/${settings['che.factory.default_editor']}/devfile.yaml`)(this.store.dispatch, this.store.getState, undefined),
+      requestDwDevfiles(`${settings.cheWorkspacePluginRegistryUrl}/plugins/${settings['che.factory.default_plugins']}/devfile.yaml`)(this.store.dispatch, this.store.getState, undefined)
+    ])
+      .then(() => {
+        // noop
+      });
   }
 
   private async updateInfrastructureNamespaces(): Promise<void> {

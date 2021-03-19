@@ -22,6 +22,12 @@ import { Store } from 'redux';
 import NavigationRecentList from '../RecentList';
 import { AppState } from '../../../store';
 
+jest.mock('react-tooltip', () => {
+  return function DummyTooltip(): React.ReactElement {
+    return (<div>Dummy Tooltip</div>);
+  };
+});
+
 describe('Navigation Recent List', () => {
 
   const workspaces: che.Workspace[] = [
@@ -150,8 +156,8 @@ function createFakeStore(workspaces: che.Workspace[]): Store {
     user: {} as any,
     userProfile: {} as any,
     infrastructureNamespace: {} as any,
-    environment: {} as any,
     userPreferences: {} as any,
+    dwPlugins: {} as any,
   };
   const middleware = [thunk];
   const mockStore = createMockStore(middleware);

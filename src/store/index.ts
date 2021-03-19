@@ -13,7 +13,6 @@
 import { Action } from 'redux';
 import { ThunkAction } from 'redux-thunk';
 import * as BrandingStore from './Branding';
-import * as EnvironmentStore from './Environment';
 import * as DevfileRegistriesStore from './DevfileRegistries';
 import * as FactoryResolver from './FactoryResolver';
 import * as InfrastructureNamespaceStore from './InfrastructureNamespace';
@@ -22,6 +21,7 @@ import * as UserPreferences from './UserPreferences';
 import * as WorkspacesStore from './Workspaces';
 import * as UserStore from './User';
 import * as UserProfileStore from './UserProfile';
+import * as DwPlugins from './DevWorkspacePlugins';
 
 // the top-level state object
 export interface AppState {
@@ -33,8 +33,8 @@ export interface AppState {
   workspaces: WorkspacesStore.State;
   plugins: Plugins.State;
   factoryResolver: FactoryResolver.State;
-  environment: EnvironmentStore.State;
   userPreferences: UserPreferences.State;
+  dwPlugins: DwPlugins.State;
 }
 
 export const reducers = {
@@ -46,8 +46,8 @@ export const reducers = {
   infrastructureNamespace: InfrastructureNamespaceStore.reducer,
   plugins: Plugins.reducer,
   factoryResolver: FactoryResolver.reducer,
-  environment: EnvironmentStore.reducer,
   userPreferences: UserPreferences.reducer,
+  dwPlugins: DwPlugins.reducer,
 };
 
 // this type can be used as a hint on action creators so that its 'dispatch' and 'getState' params are
