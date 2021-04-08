@@ -176,6 +176,7 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
           await validateMachineToken(workspace.id, machineToken);
           await this.props.stopWorkspace(workspace);
           await this.props.requestWorkspace(workspace);
+          this.setState({ currentStep: LoadIdeSteps.INITIALIZING });
           window.postMessage('show-navbar', '*');
         } catch (error) {
           console.error('Machine token validation failed. ', error);
@@ -203,7 +204,7 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
 
   public async componentDidUpdate(prevProps: Props, prevState: State): Promise<void> {
     const { allWorkspaces, match: { params } } = this.props;
-    const { hasError, currentStep } = this.state;
+    const { hasError } = this.state;
     const workspace = allWorkspaces.find(workspace =>
       workspace.namespace === params.namespace
       && workspace.devfile.metadata.name === this.workspaceName);
@@ -242,10 +243,20 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
         currentStep: LoadIdeSteps.INITIALIZING,
         workspaceId: workspace.id,
       });
-    } else if (currentStep === LoadIdeSteps.OPEN_IDE && workspace.status === WorkspaceStatus[WorkspaceStatus.STOPPED]) {
-      this.setState({ currentStep: LoadIdeSteps.INITIALIZING, ideUrl: undefined });
     }
+    this.checkOnStoppingStatus(workspace);
     this.debounce.setDelay(1000);
+  }
+
+  private checkOnStoppingStatus(workspace?: che.Workspace): void {
+    if (!workspace) {
+      return;
+    }
+    if (workspace.status === WorkspaceStatus[WorkspaceStatus.STOPPING]) {
+      this.setState({
+        currentStep: LoadIdeSteps.START_WORKSPACE
+      });
+    }
   }
 
   private findErrorLogs(wsLogs: string[]): string[] {
@@ -381,7 +392,8 @@ class IdeLoaderContainer extends React.PureComponent<Props, State> {
     }
     if (this.state.currentStep === LoadIdeSteps.INITIALIZING) {
       this.setState({ currentStep: LoadIdeSteps.START_WORKSPACE });
-      if (workspace.status === WorkspaceStatus[WorkspaceStatus.STOPPED] && !this.state.hasError) {
+      await this.props.requestWorkspace(workspace);
+      if (this.props.workspace?.status === WorkspaceStatus[WorkspaceStatus.STOPPED]) {
         try {
           await this.props.startWorkspace(workspace);
         } catch (e) {

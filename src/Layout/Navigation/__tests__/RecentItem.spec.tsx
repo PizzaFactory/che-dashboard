@@ -11,80 +11,119 @@
  */
 
 import React from 'react';
-import { render, screen, RenderResult } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 
 import NavigationRecentItem from '../RecentItem';
 import { NavigationRecentItemObject } from '..';
+import { createHashHistory } from 'history';
+import { Provider } from 'react-redux';
+import renderer from 'react-test-renderer';
+import { WorkspaceStatus } from '../../../services/helpers/types';
+import { FakeStoreBuilder } from '../../../store/__mocks__/storeBuilder';
 
-jest.mock('react-tooltip', () => {
-  return function DummyTooltip(): React.ReactElement {
-    return (<div>Dummy Tooltip</div>);
+jest.mock('../../../components/Workspace/Indicator', () => {
+  return function DummyWorkspaceIndicator(): React.ReactElement {
+    return (<div>Dummy Workspace Indicator</div>);
   };
 });
 
 describe('Navigation Item', () => {
 
-  let activeItem = '';
   const item: NavigationRecentItemObject = {
     status: '',
     label: 'workspace',
     to: '/namespace/workspace',
+    workspaceId: 'test-wrks-id'
   };
 
-  function renderComponent(): RenderResult {
-    return render(
-      <MemoryRouter>
-        <NavigationRecentItem item={item} activePath={activeItem} />
-      </MemoryRouter>
-    );
-  }
+  afterEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('should render navigation item for STOPPED workspace correctly', () => {
+    const status = WorkspaceStatus.STOPPED;
+    const element = buildElement(Object.assign({}, item, { status }), '', true);
+
+    expect(renderer.create(element).toJSON()).toMatchSnapshot();
+  });
+
+  it('should render navigation item for STARTING workspace correctly', () => {
+    const status = WorkspaceStatus.STARTING;
+    const element = buildElement(Object.assign({}, item, { status }), '', true);
+
+    expect(renderer.create(element).toJSON()).toMatchSnapshot();
+  });
+
+  it('should render navigation item for RUNNING workspace correctly', () => {
+    const status = WorkspaceStatus.RUNNING;
+    const element = buildElement(Object.assign({}, item, { status }), '', true);
+
+    expect(renderer.create(element).toJSON()).toMatchSnapshot();
+  });
+
+  it('should render navigation item for STOPPING workspace correctly', () => {
+    const status = WorkspaceStatus.STOPPING;
+    const element = buildElement(Object.assign({}, item, { status }), '', true);
+
+    expect(renderer.create(element).toJSON()).toMatchSnapshot();
+  });
+
+  it('should render navigation item for ERROR workspace correctly', () => {
+    const status = WorkspaceStatus.ERROR;
+    const element = buildElement(Object.assign({}, item, { status }), '', true);
+
+    expect(renderer.create(element).toJSON()).toMatchSnapshot();
+  });
 
   it('should have correct label', () => {
-    renderComponent();
+    render(buildElement(item));
 
-    const link = screen.getByRole('link');
+    const link = screen.getByTestId(item.to);
     expect(link).toHaveTextContent('workspace');
   });
 
   it('should have workspace status icon', () => {
-    renderComponent();
-    const workspaceStatusIndicator = screen.getByTestId('workspace-status-indicator');
+    render(buildElement(item));
+    const workspaceStatusIndicator = screen.getByText('Dummy Workspace Indicator');
     expect(workspaceStatusIndicator).toBeDefined();
   });
 
   describe('activation', () => {
 
     it('should render not active navigation item', () => {
-      renderComponent();
+      render(buildElement(item));
 
-      const link = screen.getByRole('link');
+      const link = screen.getByTestId(item.to);
       expect(link).not.toHaveAttribute('aria-current');
     });
 
     it('should render active navigation item', () => {
-      activeItem = '/namespace/workspace';
-      renderComponent();
+      render(buildElement(item, '/namespace/workspace'));
 
-      const link = screen.getByRole('link');
+      const link = screen.getByTestId(item.to);
       expect(link).toHaveAttribute('aria-current');
     });
 
     it('should activate navigation item on props change', () => {
-      activeItem = '';
-      const { rerender } = renderComponent();
+      const { rerender } = render(buildElement(item));
 
-      activeItem = '/namespace/workspace';
-      rerender(
-        <MemoryRouter>
-          <NavigationRecentItem item={item} activePath={activeItem} />
-        </MemoryRouter>
-      );
+      rerender(buildElement(item, '/namespace/workspace'));
 
-      const link = screen.getByRole('link');
+      const link = screen.getByTestId(item.to);
       expect(link).toHaveAttribute('aria-current');
     });
 
   });
 
 });
+
+function buildElement(item: NavigationRecentItemObject, activeItem = '', isDefaultExpanded = false): JSX.Element {
+  const store = new FakeStoreBuilder().build();
+  const history = createHashHistory();
+  return (<Provider store={store}>
+    <MemoryRouter>
+      <NavigationRecentItem isDefaultExpanded={isDefaultExpanded} item={item} activePath={activeItem} history={history} />
+    </MemoryRouter>
+  </Provider>);
+}
