@@ -170,7 +170,7 @@ describe('Custom Workspace Tab', () => {
       });
       const mockOnDevfile = jest.fn((devfile: che.WorkspaceDevfile, namespace: che.KubernetesNamespace) => {
         expect(namespace).toEqual(defaultInfrastructureNamespace);
-        const expectedAttributes: che.WorkspaceConfigAttributes = {
+        const expectedAttributes: che.WorkspaceDevfileAttributes = {
           asyncPersist: 'true',
           persistVolumes: 'false',
         };
@@ -267,8 +267,36 @@ describe('Custom Workspace Tab', () => {
 
   describe('devfile editor', () => {
 
+    it('should correctly apply the preferred storage type \'persistent\'', () => {
+      const defaultStorageType = 'persistent';
+      renderComponent(createStore({ defaultStorageType }), jest.fn());
+
+      const editorTextbox = screen.getByTestId('dummy-editor') as HTMLInputElement;
+      expect(editorTextbox.value).not.toContain('"persistVolumes":');
+      expect(editorTextbox.value).not.toContain('"asyncPersist":');
+    });
+
+    it('should correctly apply the preferred storage type \'ephemeral\'', () => {
+      const defaultStorageType = 'ephemeral';
+      renderComponent(createStore({ defaultStorageType }), jest.fn());
+
+      const editorTextbox = screen.getByTestId('dummy-editor') as HTMLInputElement;
+      expect(editorTextbox.value).toContain('"persistVolumes":"false"');
+      expect(editorTextbox.value).not.toContain('"asyncPersist":');
+    });
+
+    it('should correctly apply the preferred storage type \'async\'', () => {
+      const defaultStorageType = 'async';
+      renderComponent(createStore({ defaultStorageType }), jest.fn());
+
+      const editorTextbox = screen.getByTestId('dummy-editor') as HTMLInputElement;
+      expect(editorTextbox.value).toContain('"persistVolumes":"false"');
+      expect(editorTextbox.value).toContain('"asyncPersist":"true"');
+    });
+
     it('should handle updating a devfile content', async () => {
-      const store = createStore();
+      const defaultStorageType = 'persistent';
+      const store = createStore({ defaultStorageType });
       const mockOnDevfile = jest.fn();
       renderComponent(store, mockOnDevfile);
 
