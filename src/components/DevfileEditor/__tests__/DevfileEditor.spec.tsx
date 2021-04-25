@@ -16,11 +16,35 @@ import { Provider } from 'react-redux';
 import DevfileEditor from '../';
 import { BrandingData } from '../../../services/bootstrap/branding.constant';
 import { FakeStoreBuilder } from '../../../store/__mocks__/storeBuilder';
-import { createFakeWorkspace } from '../../../store/__mocks__/workspace';
-import { languages, editor } from 'monaco-editor-core/esm/vs/editor/editor.main';
+import { createFakeCheWorkspace } from '../../../store/__mocks__/workspace';
 
-jest.mock('../../../../node_modules/monaco-editor-core/esm/vs/editor/editor.main', () => {
-  return () => ({ languages, editor });
+jest.mock('monaco-editor-core/esm/vs/editor/editor.main', () => {
+  return {
+    LanguageConfiguration: typeof {},
+    IMonarchLanguage: typeof {},
+    Position: typeof {},
+    IRange: typeof {},
+    languages: {
+      registerCompletionItemProvider: jest.fn(),
+      registerDocumentSymbolProvider: jest.fn(),
+      registerHoverProvider: jest.fn(),
+      register: jest.fn(),
+      setMonarchTokensProvider: jest.fn(),
+      setLanguageConfiguration: jest.fn(),
+      CompletionItemInsertTextRule: {
+        InsertAsSnippet: jest.fn()
+      }
+    },
+    editor: {
+      IModelDecoration: typeof [],
+      create: jest.fn(),
+      getModel: jest.fn(),
+      getValue: jest.fn(),
+      setModelMarkers: jest.fn(),
+      defineTheme: jest.fn(),
+      setTheme: jest.fn()
+    }
+  };
 });
 
 describe('The DevfileEditor component', () => {
@@ -44,8 +68,8 @@ function renderComponent(
   decorationPattern: string,
   onChange: (devfile: che.WorkspaceDevfile, isValid: boolean) => void
 ): ReactTestRenderer {
-  const workspace = createFakeWorkspace(workspaceId, workspaceName);
-  const store = new FakeStoreBuilder().withWorkspaces({
+  const workspace = createFakeCheWorkspace(workspaceId, workspaceName);
+  const store = new FakeStoreBuilder().withCheWorkspaces({
     workspaces: [workspace],
   }).withBranding({
     docs: {

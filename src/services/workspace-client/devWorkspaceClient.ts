@@ -11,16 +11,21 @@
  */
 
 import { inject, injectable } from 'inversify';
-import { convertDevWorkspaceV2ToV1, isDeleting, isWebTerminal } from '../helpers/devworkspace';
+import { isDeleting, isWebTerminal } from '../helpers/devworkspace';
 import { WorkspaceClient } from './';
 import { RestApi as DevWorkspaceRestApi, IDevWorkspaceApi, IDevWorkspaceDevfile, IDevWorkspace, IDevWorkspaceTemplateApi, IDevWorkspaceTemplate, devWorkspaceApiGroup, devworkspaceSingularSubresource, devworkspaceVersion, ICheApi } from '@eclipse-che/devworkspace-client';
 import { DevWorkspaceStatus, WorkspaceStatus } from '../helpers/types';
 import { KeycloakSetupService } from '../keycloak/setup';
 import { delay } from '../helpers/delay';
 import { RestApi } from '@eclipse-che/devworkspace-client/dist/browser';
+import { ThunkDispatch } from 'redux-thunk';
+import { State } from '../../store/Workspaces/devWorkspaces';
+import { Action } from 'redux';
+import { AppState, AppThunk } from '../../store';
 
 export interface IStatusUpdate {
   error?: string;
+  message?: string;
   status?: string;
   prevStatus?: string;
   workspaceId: string;
@@ -39,6 +44,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
   private client: RestApi;
   private maxStatusAttempts: number;
   private initializing: Promise<void>;
+  private lastDevWorkspaceLog: Map<string, string>;
 
   constructor(@inject(KeycloakSetupService) keycloakSetupService: KeycloakSetupService) {
     super(keycloakSetupService);
@@ -49,25 +55,26 @@ export class DevWorkspaceClient extends WorkspaceClient {
     this.dwtApi = this.client.templateApi;
     this.previousItems = new Map();
     this.maxStatusAttempts = 10;
+    this.lastDevWorkspaceLog = new Map();
   }
 
   isEnabled(): Promise<boolean> {
     return this.client.isDevWorkspaceApiEnabled();
   }
 
-  async getAllWorkspaces(defaultNamespace: string): Promise<che.Workspace[]> {
+  async getAllWorkspaces(defaultNamespace: string): Promise<IDevWorkspace[]> {
     await this.initializing;
     const workspaces = await this.dwApi.listInNamespace(defaultNamespace);
-    const availableWorkspaces: che.Workspace[] = [];
+    const availableWorkspaces: IDevWorkspace[] = [];
     for (const workspace of workspaces) {
       if (!isDeleting(workspace) && !isWebTerminal(workspace)) {
-        availableWorkspaces.push(convertDevWorkspaceV2ToV1(workspace));
+        availableWorkspaces.push(workspace);
       }
     }
     return availableWorkspaces;
   }
 
-  async getWorkspaceByName(namespace: string, workspaceName: string): Promise<che.Workspace> {
+  async getWorkspaceByName(namespace: string, workspaceName: string): Promise<IDevWorkspace> {
     let workspace = await this.dwApi.getByName(namespace, workspaceName);
     let attempted = 0;
     while ((!workspace.status || !workspace.status.phase || !workspace.status.ideUrl) && attempted < this.maxStatusAttempts) {
@@ -80,13 +87,13 @@ export class DevWorkspaceClient extends WorkspaceClient {
     const workspaceStatus = workspace.status;
     if (!workspaceStatus || !workspaceStatus.phase) {
       throw new Error(`Could not retrieve devworkspace status information from ${workspaceName} in namespace ${namespace}`);
-    } else if (workspaceStatus.phase.toUpperCase() === DevWorkspaceStatus[DevWorkspaceStatus.RUNNING] && !workspaceStatus?.ideUrl) {
+    } else if (workspaceStatus.phase === DevWorkspaceStatus.RUNNING && !workspaceStatus?.ideUrl) {
       throw new Error('Could not retrieve ideUrl for the running workspace');
     }
-    return convertDevWorkspaceV2ToV1(workspace);
+    return workspace;
   }
 
-  async create(devfile: IDevWorkspaceDevfile, pluginsDevfile: IDevWorkspaceDevfile[]): Promise<che.Workspace> {
+  async create(devfile: IDevWorkspaceDevfile, pluginsDevfile: IDevWorkspaceDevfile[]): Promise<IDevWorkspace> {
     if (!devfile.components) {
       devfile.components = [];
     }
@@ -95,7 +102,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
     const namespace = createdWorkspace.metadata.namespace;
 
     for (const pluginDevfile of pluginsDevfile) {
-      // todo handle error in a proper way
+      // TODO handle error in a proper way
       const pluginName = pluginDevfile.metadata.name.replaceAll(' ', '-').toLowerCase();
       const workspaceId = createdWorkspace.status.devworkspaceId;
       const devfileGroupVersion = `${devWorkspaceApiGroup}/${devworkspaceVersion}`;
@@ -131,17 +138,24 @@ export class DevWorkspaceClient extends WorkspaceClient {
     createdWorkspace.spec.started = true;
     const updatedWorkspace = await this.dwApi.update(createdWorkspace);
 
-    return convertDevWorkspaceV2ToV1(updatedWorkspace);
+    return updatedWorkspace;
   }
 
-  delete(namespace: string, name: string): void {
-    this.dwApi.delete(namespace, name);
+  async update(workspace: IDevWorkspace): Promise<IDevWorkspace> {
+    return this.dwApi.update(workspace);
   }
 
-  async changeWorkspaceStatus(namespace: string, name: string, started: boolean): Promise<che.Workspace> {
+  async delete(namespace: string, name: string): Promise<void> {
+    await this.dwApi.delete(namespace, name);
+  }
+
+  async changeWorkspaceStatus(namespace: string, name: string, started: boolean): Promise<IDevWorkspace> {
     const changedWorkspace = await this.dwApi.changeStatus(namespace, name, started);
+    if (started === false && changedWorkspace.status?.devworkspaceId) {
+      this.lastDevWorkspaceLog.delete(changedWorkspace.status.devworkspaceId);
+    }
     this.checkForDevWorkspaceError(changedWorkspace);
-    return convertDevWorkspaceV2ToV1(changedWorkspace);
+    return changedWorkspace;
   }
 
   /**
@@ -151,35 +165,38 @@ export class DevWorkspaceClient extends WorkspaceClient {
    */
   async initializeNamespace(namespace: string): Promise<boolean> {
     try {
-      this.initializing = new Promise((resolve, reject) => {
-        this.dwCheApi.initializeNamespace(namespace).then(_ => {
-          resolve(undefined);
-        });
-      });
-      await this.initializing;
+      await this.dwCheApi.initializeNamespace(namespace);
+      return true;
     } catch (e) {
       console.error(e);
       return false;
     }
-    return true;
   }
 
   subscribeToNamespace(
     defaultNamespace: string,
-    callback: any,
-    dispatch: any
+    callback: (workspace: IDevWorkspace, message: IStatusUpdate) => AppThunk<Action, void>,
+    dispatch: ThunkDispatch<State, undefined, Action>,
+    getState: () => AppState,
   ): void {
     setInterval(async () => {
       // This is a temporary solution until websockets work. Ideally we should just have a websocket connection here.
       const devworkspaces = await this.getAllWorkspaces(defaultNamespace);
-      devworkspaces.forEach((devworkspace: che.Workspace) => {
+      devworkspaces.forEach((devworkspace: IDevWorkspace) => {
         const statusUpdate = this.createStatusUpdate(devworkspace);
-        callback(
-          {
-            id: devworkspace.id,
-          } as che.Workspace,
-          statusUpdate
-        )(dispatch);
+
+        const message = devworkspace.status.message;
+        if (message) {
+          const workspaceId = devworkspace.status.devworkspaceId;
+          const lastMessage = this.lastDevWorkspaceLog.get(workspaceId);
+
+          // Only add new messages we haven't seen before
+          if (lastMessage !== message) {
+            statusUpdate.message = message;
+            this.lastDevWorkspaceLog.set(workspaceId, message);
+          }
+        }
+        callback(devworkspace, statusUpdate)(dispatch, getState, undefined);
       });
     }, 1000);
   }
@@ -189,11 +206,13 @@ export class DevWorkspaceClient extends WorkspaceClient {
    * and the new DevWorkspace
    * @param devworkspace The incoming DevWorkspace
    */
-  private createStatusUpdate(devworkspace: che.Workspace): IStatusUpdate {
-    const namespace = devworkspace.namespace as string;
-    const workspaceId = devworkspace.id;
+  private createStatusUpdate(devworkspace: IDevWorkspace): IStatusUpdate {
+    const namespace = devworkspace.metadata.namespace;
+    const workspaceId = devworkspace.status.devworkspaceId;
     // Starting devworkspaces don't have status defined
-    const status = devworkspace.status && typeof devworkspace.status === 'string' ? devworkspace.status.toUpperCase() : WorkspaceStatus[WorkspaceStatus.STARTING];
+    const status = typeof devworkspace.status.phase === 'string'
+      ? devworkspace.status.phase.toUpperCase()
+      : WorkspaceStatus[WorkspaceStatus.STARTING];
 
     const prevWorkspace = this.previousItems.get(namespace);
     if (prevWorkspace) {
@@ -222,7 +241,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
 
   checkForDevWorkspaceError(devworkspace: IDevWorkspace) {
     const currentPhase = devworkspace.status?.phase;
-    if (currentPhase && currentPhase.toUpperCase() === DevWorkspaceStatus[DevWorkspaceStatus.FAILED]) {
+    if (currentPhase && currentPhase === DevWorkspaceStatus.FAILED) {
       const message = devworkspace.status.message;
       if (message) {
         throw new Error(devworkspace.status.message);

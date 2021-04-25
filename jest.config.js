@@ -17,9 +17,6 @@ module.exports = {
   },
   testRegex: '(/src/.+\\.(test|spec))\\.tsx?$',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  moduleDirectories: [
-    'node_modules',
-  ],
   moduleNameMapper: {
     '\\.(css|less|sass|scss|styl)$': '<rootDir>/__mocks__/styleMock.js',
     '\\.(gif|ttf|eot|svg)$': '<rootDir>/__mocks__/fileMock.js',
@@ -56,4 +53,5 @@ module.exports = {
       lines: 50,
     }
   },
+  setupFiles: ['./src/inversify.config.ts'],
 }

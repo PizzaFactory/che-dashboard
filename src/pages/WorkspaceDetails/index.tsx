@@ -35,18 +35,19 @@ import { HeaderActionSelect } from './Header/Actions';
 import { lazyInject } from '../../inversify.config';
 import { AppAlerts } from '../../services/alerts/appAlerts';
 import OverviewTab, { OverviewTab as Overview } from './OverviewTab';
-import EditorTab, { EditorTab as Editor } from './DevfileTab';
+import EditorTab, { EditorTab as Editor } from './EditorTab';
 import { selectIsLoading, selectWorkspaceById } from '../../store/Workspaces/selectors';
 import { History } from 'history';
 
 import './WorkspaceDetails.styl';
+import { Workspace } from '../../services/workspaceAdapter';
 
 export const SECTION_THEME = PageSectionVariants.light;
 
 type Props =
   {
     workspacesLink: string;
-    onSave: (workspace: che.Workspace) => Promise<void>;
+    onSave: (workspace: Workspace, activeTab: WorkspaceDetailsTab | undefined) => Promise<void>;
     history: History;
   } & MappedProps;
 
@@ -167,7 +168,7 @@ export class WorkspaceDetails extends React.PureComponent<Props, State> {
       return <div>Workspace not found.</div>;
     }
 
-    const workspaceName = workspace.devfile.metadata.name ? workspace.devfile.metadata.name : '';
+    const workspaceName = workspace.name;
 
     return (
       <React.Fragment>
@@ -219,10 +220,10 @@ export class WorkspaceDetails extends React.PureComponent<Props, State> {
             actions={[
               <Button key="confirm" variant="primary" onClick={() => this.handleDiscardChanges()}>
                 Discard Changes
-                   </Button>,
+              </Button>,
               <Button key="cancel" variant="secondary" onClick={() => this.handleCancelChanges()}>
                 Cancel
-                   </Button>,
+              </Button>,
             ]}
           >
             <TextContent>
@@ -236,11 +237,11 @@ export class WorkspaceDetails extends React.PureComponent<Props, State> {
     );
   }
 
-  private async onSave(workspace: che.Workspace): Promise<void> {
+  private async onSave(workspace: Workspace): Promise<void> {
     if (this.props.workspace && (WorkspaceStatus[this.props.workspace.status] !== WorkspaceStatus.STOPPED)) {
       this.setState({ hasWarningMessage: true });
     }
-    await this.props.onSave(workspace);
+    await this.props.onSave(workspace, this.state.activeTabKey);
     this.editorTabPageRef.current?.cancelChanges();
   }
 
