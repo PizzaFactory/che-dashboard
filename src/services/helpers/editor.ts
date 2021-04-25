@@ -12,6 +12,7 @@
 
 import { IDevWorkspaceDevfile } from '@eclipse-che/devworkspace-client';
 import { safeDump } from 'js-yaml';
+import { LanguageConfiguration, IMonarchLanguage } from 'monaco-editor-core/esm/vs/editor/editor.main';
 
 const sortOrder: Array<keyof che.WorkspaceDevfile | keyof IDevWorkspaceDevfile> = [
   'apiVersion',
@@ -49,11 +50,11 @@ function sortKeys(key1: keyof che.WorkspaceDevfile, key2: keyof che.WorkspaceDev
 /**
  * Provides a devfile stringify function.
  */
-export default function stringify(devfile: che.WorkspaceDevfile | undefined): string {
+export default function stringify(devfile: che.WorkspaceDevfile | IDevWorkspaceDevfile): string {
   if (!devfile) {
     return '';
   }
-  return safeDump(devfile as che.WorkspaceDevfile, { lineWidth, sortKeys });
+  return safeDump(devfile, { lineWidth, sortKeys });
 }
 
 /**
@@ -71,7 +72,7 @@ export const conf = {
     close: '"',
   }, { open: '\'', close: '\'' }],
   folding: { offSide: true },
-};
+} as LanguageConfiguration;
 
 /**
  * Provides the language support.
@@ -172,4 +173,4 @@ export const language = {
     tagHandle: [[/![^ ]*/, 'tag']],
     anchor: [[/[&*][^ ]+/, 'namespace']],
   },
-};
+} as IMonarchLanguage;
