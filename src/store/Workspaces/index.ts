@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Red Hat, Inc.
+ * Copyright (c) 2018-2021 Red Hat, Inc.
  * This program and the accompanying materials are made
  * available under the terms of the Eclipse Public License 2.0
  * which is available at https://www.eclipse.org/legal/epl-2.0/
@@ -123,7 +123,7 @@ export const actionCreators: ActionCreators = {
     dispatch({ type: 'REQUEST_WORKSPACES' });
     try {
       const state = getState();
-      const cheDevworkspaceEnabled = state.cheWorkspaces.settings['che.devworkspaces.enabled'] === 'true';
+      const cheDevworkspaceEnabled = state.workspacesSettings.settings['che.devworkspaces.enabled'] === 'true';
       let requestDevWorkspaces: Promise<any>;
       if (cheDevworkspaceEnabled) {
         requestDevWorkspaces = dispatch(DevWorkspacesStore.actionCreators.requestWorkspaces());
@@ -147,7 +147,7 @@ export const actionCreators: ActionCreators = {
     dispatch({ type: 'REQUEST_WORKSPACES' });
     try {
       const state = getState();
-      const cheDevworkspaceEnabled = state.cheWorkspaces.settings['che.devworkspaces.enabled'] === 'true';
+      const cheDevworkspaceEnabled = state.workspacesSettings.settings['che.devworkspaces.enabled'] === 'true';
 
       if (cheDevworkspaceEnabled && isWorkspaceV2(workspace.ref)) {
         await dispatch(DevWorkspacesStore.actionCreators.requestWorkspace(workspace.ref));
@@ -165,7 +165,7 @@ export const actionCreators: ActionCreators = {
     dispatch({ type: 'REQUEST_WORKSPACES' });
     try {
       const state = getState();
-      const cheDevworkspaceEnabled = state.cheWorkspaces.settings['che.devworkspaces.enabled'] === 'true';
+      const cheDevworkspaceEnabled = state.workspacesSettings.settings['che.devworkspaces.enabled'] === 'true';
 
       if (cheDevworkspaceEnabled && isWorkspaceV2(workspace.ref)) {
         await dispatch(DevWorkspacesStore.actionCreators.startWorkspace(workspace.ref));
@@ -175,14 +175,14 @@ export const actionCreators: ActionCreators = {
       dispatch({ type: 'UPDATE_WORKSPACE' });
     } catch (e) {
       dispatch({ type: 'RECEIVE_ERROR' });
-      throw e.message;
+      throw e;
     }
   },
 
   stopWorkspace: (workspace: Workspace): AppThunk<KnownAction, Promise<void>> => async (dispatch, getState): Promise<void> => {
     try {
       const state = getState();
-      const cheDevworkspaceEnabled = state.cheWorkspaces.settings['che.devworkspaces.enabled'] === 'true';
+      const cheDevworkspaceEnabled = state.workspacesSettings.settings['che.devworkspaces.enabled'] === 'true';
       if (cheDevworkspaceEnabled && isWorkspaceV2(workspace.ref)) {
         await dispatch(DevWorkspacesStore.actionCreators.stopWorkspace(workspace.ref));
       } else {
@@ -198,9 +198,9 @@ export const actionCreators: ActionCreators = {
   deleteWorkspace: (workspace: Workspace): AppThunk<KnownAction, Promise<void>> => async (dispatch, getState): Promise<void> => {
     try {
       const state = getState();
-      const cheDevworkspaceEnabled = state.cheWorkspaces.settings['che.devworkspaces.enabled'] === 'true';
+      const cheDevworkspaceEnabled = state.workspacesSettings.settings['che.devworkspaces.enabled'] === 'true';
       if (cheDevworkspaceEnabled && isWorkspaceV2(workspace.ref)) {
-        await dispatch(DevWorkspacesStore.actionCreators.deleteWorkspace(workspace.ref));
+        await dispatch(DevWorkspacesStore.actionCreators.terminateWorkspace(workspace.ref));
       } else {
         await dispatch(CheWorkspacesStore.actionCreators.deleteWorkspace(workspace.ref as che.Workspace));
       }
@@ -231,7 +231,7 @@ export const actionCreators: ActionCreators = {
     dispatch({ type: 'REQUEST_WORKSPACES' });
     try {
       const state = getState();
-      const cheDevworkspaceEnabled = state.cheWorkspaces.settings['che.devworkspaces.enabled'] === 'true';
+      const cheDevworkspaceEnabled = state.workspacesSettings.settings['che.devworkspaces.enabled'] === 'true';
       if (cheDevworkspaceEnabled) {
         await dispatch(DevWorkspacesStore.actionCreators.updateWorkspace(workspace.ref as IDevWorkspace));
       } else {
@@ -255,7 +255,7 @@ export const actionCreators: ActionCreators = {
     try {
       const state = getState();
 
-      const cheDevworkspaceEnabled = state.cheWorkspaces.settings['che.devworkspaces.enabled'] === 'true';
+      const cheDevworkspaceEnabled = state.workspacesSettings.settings['che.devworkspaces.enabled'] === 'true';
       if (cheDevworkspaceEnabled && isDevfileV2(devfile)) {
         const devWorkspace = await dispatch(DevWorkspacesStore.actionCreators.createWorkspaceFromDevfile(devfile));
         dispatch({ type: 'ADD_WORKSPACE' });
@@ -298,7 +298,7 @@ export const actionCreators: ActionCreators = {
 
   deleteWorkspaceLogs: (workspaceId: string): AppThunk<KnownAction> => (_dispatch, getState): void => {
     const state = getState();
-    const cheDevworkspaceEnabled = state.cheWorkspaces.settings['che.devworkspaces.enabled'] === 'true';
+    const cheDevworkspaceEnabled = state.workspacesSettings.settings['che.devworkspaces.enabled'] === 'true';
     if (cheDevworkspaceEnabled) {
       DevWorkspacesStore.actionCreators.deleteWorkspaceLogs(workspaceId);
     }

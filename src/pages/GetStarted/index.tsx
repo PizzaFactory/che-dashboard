@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Red Hat, Inc.
+ * Copyright (c) 2018-2021 Red Hat, Inc.
  * This program and the accompanying materials are made
  * available under the terms of the Eclipse Public License 2.0
  * which is available at https://www.eclipse.org/legal/epl-2.0/
@@ -31,6 +31,8 @@ import { AppState } from '../../store';
 import { AlertItem, GettingStartedTab } from '../../services/helpers/types';
 import { ROUTE } from '../../route.enum';
 import { Workspace } from '../../services/workspaceAdapter';
+import { selectBranding } from '../../store/Branding/selectors';
+import { selectRegistriesErrors } from '../../store/DevfileRegistries/selectors';
 
 const SamplesListTab = React.lazy(() => import('./GetStartedTab'));
 const CustomWorkspaceTab = React.lazy(() => import('./CustomWorkspaceTab'));
@@ -58,17 +60,39 @@ export class GetStarted extends React.PureComponent<Props, State> {
     };
   }
 
+  public componentDidMount(): void {
+    if (this.props.registriesErrors.length) {
+      this.showErrors();
+    }
+  }
+
   public componentDidUpdate(): void {
     const activeTabKey = this.getActiveTabKey();
     if (this.state.activeTabKey !== activeTabKey) {
       this.setState({ activeTabKey });
     }
+
+    if (this.props.registriesErrors.length) {
+      this.showErrors();
+    }
+  }
+
+  private showErrors(): void {
+    const { registriesErrors } = this.props;
+    registriesErrors.forEach(error => {
+      const key = 'registry-error-' + error.url;
+      this.appAlerts.removeAlert(key);
+      this.appAlerts.showAlert({
+        key,
+        title: error.errorMessage,
+        variant: AlertVariant.danger,
+      });
+    });
   }
 
   private getTitle(): string {
-    const productName = this.props.branding.data.name;
     const titles: { [key in GettingStartedTab]: string } = {
-      'get-started': `Getting Started with ${productName}`,
+      'get-started': 'Create Workspace',
       'custom-workspace': 'Create Custom Workspace',
     };
     return titles[this.state.activeTabKey];
@@ -174,11 +198,12 @@ export class GetStarted extends React.PureComponent<Props, State> {
           isFilled={false}
         >
           <Tabs
+            style={{ paddingTop: 'var(--pf-c-page__main-section--PaddingTop)' }}
             activeKey={activeTabKey}
             onSelect={(event, tabKey) => this.handleTabClick(event, tabKey)}>
             <Tab
               eventKey={getStartedTab}
-              title="Get Started"
+              title="Quick Add"
             >
               <Suspense fallback={Fallback}>
                 <SamplesListTab
@@ -205,7 +230,8 @@ export class GetStarted extends React.PureComponent<Props, State> {
 }
 
 const mapStateToProps = (state: AppState) => ({
-  branding: state.branding,
+  branding: selectBranding(state),
+  registriesErrors: selectRegistriesErrors(state),
 });
 
 const connector = connect(

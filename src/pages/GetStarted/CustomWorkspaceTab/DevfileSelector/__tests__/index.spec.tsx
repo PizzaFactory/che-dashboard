@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Red Hat, Inc.
+ * Copyright (c) 2018-2021 Red Hat, Inc.
  * This program and the accompanying materials are made
  * available under the terms of the Eclipse Public License 2.0
  * which is available at https://www.eclipse.org/legal/epl-2.0/
@@ -20,6 +20,9 @@ import mockMetadata from '../../../__tests__/devfileMetadata.json';
 import { FakeStoreBuilder } from '../../../../../store/__mocks__/storeBuilder';
 import * as FactoryResolverStore from '../../../../../store/FactoryResolver';
 import { AppThunk } from '../../../../../store';
+
+// mute the outputs
+console.error = jest.fn();
 
 jest.mock('../../../../../store/FactoryResolver.ts', () => {
   return {
@@ -55,7 +58,13 @@ describe('Devfile Selector', () => {
   let selectToggleButton: HTMLButtonElement;
   beforeEach(() => {
     const store = new FakeStoreBuilder()
-      .withDevfileRegistries({ metadata: mockMetadata })
+      .withDevfileRegistries({
+        registries: {
+          'registry-location': {
+            metadata: mockMetadata,
+          },
+        },
+      })
       .build();
     renderComponent(store);
 

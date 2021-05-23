@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Red Hat, Inc.
+ * Copyright (c) 2018-2021 Red Hat, Inc.
  * This program and the accompanying materials are made
  * available under the terms of the Eclipse Public License 2.0
  * which is available at https://www.eclipse.org/legal/epl-2.0/
@@ -11,10 +11,10 @@
  */
 
 import { inject, injectable } from 'inversify';
-import { isDeleting, isWebTerminal } from '../helpers/devworkspace';
+import { isWebTerminal } from '../helpers/devworkspace';
 import { WorkspaceClient } from './';
 import { RestApi as DevWorkspaceRestApi, IDevWorkspaceApi, IDevWorkspaceDevfile, IDevWorkspace, IDevWorkspaceTemplateApi, IDevWorkspaceTemplate, devWorkspaceApiGroup, devworkspaceSingularSubresource, devworkspaceVersion, ICheApi, Patch } from '@eclipse-che/devworkspace-client';
-import { DevWorkspaceStatus, WorkspaceStatus } from '../helpers/types';
+import { DevWorkspaceStatus } from '../helpers/types';
 import { KeycloakSetupService } from '../keycloak/setup';
 import { delay } from '../helpers/delay';
 import { RestApi } from '@eclipse-che/devworkspace-client/dist/browser';
@@ -44,9 +44,10 @@ export class DevWorkspaceClient extends WorkspaceClient {
   private dwCheApi: ICheApi;
   private previousItems: Map<string, Map<string, IStatusUpdate>>;
   private client: RestApi;
-  private maxStatusAttempts: number;
+  private readonly maxStatusAttempts: number;
   private initializing: Promise<void>;
   private lastDevWorkspaceLog: Map<string, string>;
+  private devWorkspacesIds: string[];
 
   constructor(@inject(KeycloakSetupService) keycloakSetupService: KeycloakSetupService) {
     super(keycloakSetupService);
@@ -58,6 +59,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
     this.previousItems = new Map();
     this.maxStatusAttempts = 10;
     this.lastDevWorkspaceLog = new Map();
+    this.devWorkspacesIds = [];
   }
 
   isEnabled(): Promise<boolean> {
@@ -69,7 +71,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
     const workspaces = await this.dwApi.listInNamespace(defaultNamespace);
     const availableWorkspaces: IDevWorkspace[] = [];
     for (const workspace of workspaces) {
-      if (!isDeleting(workspace) && !isWebTerminal(workspace)) {
+      if (!isWebTerminal(workspace)) {
         availableWorkspaces.push(workspace);
       }
     }
@@ -79,7 +81,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
   async getWorkspaceByName(namespace: string, workspaceName: string): Promise<IDevWorkspace> {
     let workspace = await this.dwApi.getByName(namespace, workspaceName);
     let attempted = 0;
-    while ((!workspace.status || !workspace.status.phase || !workspace.status.ideUrl) && attempted < this.maxStatusAttempts) {
+    while ((!workspace.status || !workspace.status.phase || !workspace.status.mainUrl) && attempted < this.maxStatusAttempts) {
       workspace = await this.dwApi.getByName(namespace, workspaceName);
       this.checkForDevWorkspaceError(workspace);
       attempted += 1;
@@ -89,8 +91,8 @@ export class DevWorkspaceClient extends WorkspaceClient {
     const workspaceStatus = workspace.status;
     if (!workspaceStatus || !workspaceStatus.phase) {
       throw new Error(`Could not retrieve devworkspace status information from ${workspaceName} in namespace ${namespace}`);
-    } else if (workspaceStatus.phase === DevWorkspaceStatus.RUNNING && !workspaceStatus?.ideUrl) {
-      throw new Error('Could not retrieve ideUrl for the running workspace');
+    } else if (workspaceStatus.phase === DevWorkspaceStatus.RUNNING && !workspaceStatus?.mainUrl) {
+      throw new Error('Could not retrieve mainUrl for the running workspace');
     }
     return workspace;
   }
@@ -102,6 +104,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
 
     const createdWorkspace = await this.dwApi.create(devfile, 'che', false);
     const namespace = createdWorkspace.metadata.namespace;
+    const name = createdWorkspace.metadata.name;
 
     for (const pluginDevfile of pluginsDevfile) {
       // TODO handle error in a proper way
@@ -130,9 +133,14 @@ export class DevWorkspaceClient extends WorkspaceClient {
     }
 
     createdWorkspace.spec.started = true;
-    const updatedWorkspace = await this.dwApi.update(createdWorkspace);
-
-    return updatedWorkspace;
+    const patch = [
+      {
+        op: 'replace',
+        path: '/spec',
+        value: createdWorkspace.spec,
+      }
+    ];
+    return this.dwApi.patch(namespace, name, patch);
   }
 
   /**
@@ -218,7 +226,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
 
   async changeWorkspaceStatus(namespace: string, name: string, started: boolean): Promise<IDevWorkspace> {
     const changedWorkspace = await this.dwApi.changeStatus(namespace, name, started);
-    if (started === false && changedWorkspace.status?.devworkspaceId) {
+    if (!started && changedWorkspace.status?.devworkspaceId) {
       this.lastDevWorkspaceLog.delete(changedWorkspace.status.devworkspaceId);
     }
     this.checkForDevWorkspaceError(changedWorkspace);
@@ -228,7 +236,7 @@ export class DevWorkspaceClient extends WorkspaceClient {
   /**
    * Add the plugin to the workspace
    * @param workspace A devworkspace
-   * @param plugin A devworkspacetemplate
+   * @param pluginName The name of the plugin
    */
   private addPlugin(workspace: IDevWorkspace, pluginName: string, namespace: string) {
     workspace.spec.template.components!.push({
@@ -259,7 +267,11 @@ export class DevWorkspaceClient extends WorkspaceClient {
 
   subscribeToNamespace(
     defaultNamespace: string,
-    callback: (workspace: IDevWorkspace, message: IStatusUpdate) => AppThunk<Action, void>,
+    callbacks: {
+      updateDevWorkspaceStatus: (workspace: IDevWorkspace, message: IStatusUpdate) => AppThunk<Action, void>,
+      updateDeletedDevWorkspaces: (deletedWorkspacesIds: string[]) => AppThunk<Action, void>,
+      updateAddedDevWorkspaces: (workspace: IDevWorkspace[]) => AppThunk<Action, void>,
+    },
     dispatch: ThunkDispatch<State, undefined, Action>,
     getState: () => AppState,
   ): void {
@@ -280,9 +292,31 @@ export class DevWorkspaceClient extends WorkspaceClient {
             this.lastDevWorkspaceLog.set(workspaceId, message);
           }
         }
-        callback(devworkspace, statusUpdate)(dispatch, getState, undefined);
+        callbacks.updateDevWorkspaceStatus(devworkspace, statusUpdate)(dispatch, getState, undefined);
       });
-    }, 1000);
+
+      const devWorkspacesIds: string[] = [];
+      const addedDevWorkspaces: IDevWorkspace[] = [];
+      devworkspaces.forEach(workspace => {
+        devWorkspacesIds.push(workspace.status.devworkspaceId);
+        if (this.devWorkspacesIds.indexOf(workspace.status.devworkspaceId) === -1) {
+          addedDevWorkspaces.push(workspace);
+        }
+      });
+      if (addedDevWorkspaces.length) {
+        callbacks.updateAddedDevWorkspaces(addedDevWorkspaces)(dispatch, getState, undefined);
+      }
+      const deletedWorkspacesId: string[] = [];
+      this.devWorkspacesIds.forEach(id => {
+        if (devWorkspacesIds.indexOf(id) === -1) {
+          deletedWorkspacesId.push(id);
+        }
+      });
+      if (deletedWorkspacesId.length) {
+        callbacks.updateDeletedDevWorkspaces(deletedWorkspacesId)(dispatch, getState, undefined);
+      }
+      this.devWorkspacesIds = devWorkspacesIds;
+    }, 3000);
   }
 
   /**
@@ -295,8 +329,8 @@ export class DevWorkspaceClient extends WorkspaceClient {
     const workspaceId = devworkspace.status.devworkspaceId;
     // Starting devworkspaces don't have status defined
     const status = typeof devworkspace.status.phase === 'string'
-      ? devworkspace.status.phase.toUpperCase()
-      : WorkspaceStatus[WorkspaceStatus.STARTING];
+      ? devworkspace.status.phase
+      : DevWorkspaceStatus.STARTING;
 
     const prevWorkspace = this.previousItems.get(namespace);
     if (prevWorkspace) {
