@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2020 Red Hat, Inc.
+# Copyright (c) 2020-2021 Red Hat, Inc.
 # This program and the accompanying materials are made
 # available under the terms of the Eclipse Public License 2.0
 # which is available at https://www.eclipse.org/legal/epl-2.0/
@@ -45,32 +45,6 @@ jobs:
         name: "Run unit tests"
         run: yarn test --runInBand
 
-  test-coverage-diff:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [14.x]
-    steps:
-      -
-        name: "Checkout che-dashboard source code"
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      -
-        name: "Use Node.js ${{ matrix.node-version }}"
-        uses: actions/setup-node@v1
-        with:
-          node-version: ${{ matrix.node-version }}
-      -
-        name: "Install dependencies"
-        run: yarn
-      -
-        name: "Jest Coverage Diff"
-        uses: anuraag016/Jest-Coverage-Diff@1.0
-        with:
-          fullCoverageDiff: false
-
   docker-build:
     needs: build-and-test
     runs-on: ubuntu-18.04
@@ -84,8 +58,6 @@ jobs:
           - platform: linux/arm64
             default: false
           - platform: linux/ppc64le
-            default: false
-          - platform: linux/s390x
             default: false
     steps:
       -
@@ -122,7 +94,7 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
           context: ./${{ env.DIR_DASHBOARD }}
-          file: ./${{ env.DIR_DASHBOARD }}/apache.Dockerfile
+          file: ./${{ env.DIR_DASHBOARD }}/build/dockerfiles/Dockerfile
           platforms: ${{ matrix.platform }}
           push: ${{ matrix.default == true }}
           tags: ${{ env.ORGANIZATION }}/che-dashboard:${{ env.IMAGE_VERSION }}

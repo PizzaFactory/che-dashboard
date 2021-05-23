@@ -1,6 +1,6 @@
 {
   "name": "che-dashboard",
-  "version": "7.30.0-SNAPSHOT",
+  "version": "7.31.0-SNAPSHOT",
   "description": "Dashboard for Eclipse CHE",
   "private": true,
   "repository": {
@@ -31,7 +31,7 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@eclipse-che/devworkspace-client": "^0.0.1-1619438984",
+    "@eclipse-che/devworkspace-client": "^0.0.1-1620800867",
     "@eclipse-che/workspace-client": "^0.0.1-1618916247",
     "@patternfly/react-core": "~4.84.4",
     "@patternfly/react-icons": "^4.3.5",

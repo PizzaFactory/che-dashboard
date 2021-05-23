@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Red Hat, Inc.
+ * Copyright (c) 2018-2021 Red Hat, Inc.
  * This program and the accompanying materials are made
  * available under the terms of the Eclipse Public License 2.0
  * which is available at https://www.eclipse.org/legal/epl-2.0/
@@ -32,7 +32,7 @@ import { CheWorkspaceBuilder } from '../../store/__mocks__/cheWorkspaceBuilder';
 
 jest.mock('../../pages/GetStarted', () => {
   return function GetStarted() {
-    return (<span>Get Started</span>);
+    return (<span>Quick Add</span>);
   };
 });
 jest.mock('../../containers/WorkspacesList.tsx', () => {
@@ -88,7 +88,7 @@ describe('Routes', () => {
     );
   }
 
-  describe('Get Started route', () => {
+  describe('Quick Add route', () => {
 
     it('should handle "/"', async () => {
       const path = ROUTE.HOME;
@@ -96,7 +96,7 @@ describe('Routes', () => {
 
       await waitFor(() => expect(screen.queryByTestId('fallback-spinner')).not.toBeInTheDocument());
 
-      expect(screen.queryByText('Get Started')).toBeTruthy();
+      expect(screen.queryByText('Quick Add')).toBeTruthy();
     });
 
     it('should handle "/get-started"', async () => {
@@ -105,7 +105,7 @@ describe('Routes', () => {
 
       await waitFor(() => expect(screen.queryByTestId('fallback-spinner')).not.toBeInTheDocument());
 
-      expect(screen.queryByText('Get Started')).toBeTruthy();
+      expect(screen.queryByText('Quick Add')).toBeTruthy();
     });
 
     it('should handle "/get-started?tab=get-started"', async () => {
@@ -114,7 +114,7 @@ describe('Routes', () => {
 
       await waitFor(() => expect(screen.queryByTestId('fallback-spinner')).not.toBeInTheDocument());
 
-      expect(screen.queryByText('Get Started')).toBeTruthy();
+      expect(screen.queryByText('Quick Add')).toBeTruthy();
     });
 
     it('should handle "/get-started?tab=custom-workspace"', async () => {
@@ -123,7 +123,7 @@ describe('Routes', () => {
 
       await waitFor(() => expect(screen.queryByTestId('fallback-spinner')).not.toBeInTheDocument());
 
-      expect(screen.queryByText('Get Started')).toBeTruthy();
+      expect(screen.queryByText('Quick Add')).toBeTruthy();
     });
 
   });

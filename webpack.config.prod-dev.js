@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2020 Red Hat, Inc.
+ * Copyright (c) 2018-2021 Red Hat, Inc.
  * This program and the accompanying materials are made
  * available under the terms of the Eclipse Public License 2.0
  * which is available at https://www.eclipse.org/legal/epl-2.0/
@@ -22,7 +22,7 @@ module.exports = env => {
     mode: 'production',
     devServer: {
       contentBase: [
-        path.join(__dirname, 'build'),
+        path.join(__dirname, 'lib'),
       ],
       clientLogLevel: 'debug',
       contentBasePublicPath: '/',
