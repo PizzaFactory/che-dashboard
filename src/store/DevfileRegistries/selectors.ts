@@ -13,15 +13,26 @@
 import { createSelector } from 'reselect';
 import { AppState } from '../';
 import match from '../../services/helpers/filter';
+import { selectWorkspacesSettingsState } from '../Workspaces/Settings/selectors';
 
 const selectState = (state: AppState) => state.devfileRegistries;
 
 export const selectRegistriesMetadata = createSelector(
   selectState,
-  state => {
-    const registriesMetadata = Object.values(state.registries)
-      .map(registryMetadata => registryMetadata.metadata || []);
-    return mergeRegistriesMetadata(registriesMetadata);
+  selectWorkspacesSettingsState,
+  (devfileRegistriesState, workspacesSettingsState) => {
+    const registriesMetadata = Object.keys(devfileRegistriesState.registries).map(registry => {
+      const metadata = devfileRegistriesState.registries[registry].metadata || [];
+      return metadata.map(meta => Object.assign({ registry }, meta));
+    });
+    const metadata = mergeRegistriesMetadata(registriesMetadata);
+    const cheDevworkspaceEnabled = workspacesSettingsState.settings['che.devworkspaces.enabled'] === 'true';
+    if (cheDevworkspaceEnabled) {
+      return filterDevfileV2Metadata(metadata);
+    } else {
+      return metadata;
+    }
+
   }
 );
 
@@ -67,6 +78,10 @@ function mergeRegistriesMetadata(registriesMetadata: Array<Array<che.DevfileMeta
   return registriesMetadata.reduce((mergedMetadata, registryMetadata) => {
     return mergedMetadata.concat(registryMetadata);
   }, []);
+}
+
+function filterDevfileV2Metadata(metadata: Array<che.DevfileMetaData>): Array<che.DevfileMetaData> {
+  return metadata.filter(metadata => metadata.links?.v2);
 }
 
 export const selectDevfileSchema = createSelector(

@@ -19,7 +19,6 @@ import {
   AlertVariant,
   Flex,
   FlexItem,
-  Form,
   FormGroup,
   Text,
   TextContent,
@@ -30,18 +29,19 @@ import * as DevfileRegistriesStore from '../../../../store/DevfileRegistries';
 import * as FactoryResolverStore from '../../../../store/FactoryResolver';
 import { GitRepoLocationInput } from './GitRepoLocationInput';
 import { AlertItem } from '../../../../services/helpers/types';
+import { getErrorMessage } from '../../../../services/helpers/getErrorMessage';
 
 type Props =
   MappedProps
   & {
-    onDevfileResolve: (devfile: che.WorkspaceDevfile, location: string) => void;
+    onDevfileResolve: (resolverState: FactoryResolverStore.ResolverState, location: string) => void;
   };
 type State = {
   isLoading: boolean;
   alerts: AlertItem[];
 };
 
-export class DevfileSelector extends React.PureComponent<Props, State> {
+export class ImportFromGit extends React.PureComponent<Props, State> {
   private factoryResolver: FactoryResolverStore.State;
   private readonly devfileLocationRef: React.RefObject<GitRepoLocationInput>;
 
@@ -64,14 +64,14 @@ export class DevfileSelector extends React.PureComponent<Props, State> {
       this.setState({ isLoading: true });
       await this.props.requestFactoryResolver(location);
       const { resolver } = this.factoryResolver;
-      this.props.onDevfileResolve(resolver.devfile as che.WorkspaceDevfile, location);
+      this.props.onDevfileResolve(resolver, location);
       this.setState({ isLoading: false });
     } catch (e) {
       this.setState({ isLoading: false });
       this.devfileLocationRef.current?.invalidateInput();
       this.showAlert({
         key: 'load-devfile-resolver-failed',
-        title: `Failed to resolve or load the devfile. ${e}`,
+        title: getErrorMessage(e),
         variant: AlertVariant.danger,
       });
     }
@@ -90,7 +90,7 @@ export class DevfileSelector extends React.PureComponent<Props, State> {
     const { alerts, isLoading } = this.state;
 
     return (
-      <Form>
+      <>
         <AlertGroup isToast>
           {alerts.map(({ title, variant, key }) => (
             <Alert
@@ -113,7 +113,7 @@ export class DevfileSelector extends React.PureComponent<Props, State> {
               <TextContent>
                 <Text component={TextVariants.h5}>
                   Git Repo URL
-                  <span style={{ color: 'var(--pf-c-form__label-required--Color)' }}>&nbsp;*</span>
+                  <span className="label-required">&nbsp;*</span>
                 </Text>
               </TextContent>
             </FlexItem>
@@ -126,7 +126,7 @@ export class DevfileSelector extends React.PureComponent<Props, State> {
             </FlexItem>
           </Flex>
         </FormGroup>
-      </Form>
+      </>
     );
   }
 
@@ -145,4 +145,4 @@ const connector = connect(
 );
 
 type MappedProps = ConnectedProps<typeof connector>;
-export default connector(DevfileSelector);
+export default connector(ImportFromGit);
