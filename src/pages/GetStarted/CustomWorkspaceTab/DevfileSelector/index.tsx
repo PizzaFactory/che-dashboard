@@ -34,6 +34,9 @@ import { AlertItem } from '../../../../services/helpers/types';
 import { selectRegistriesMetadata } from '../../../../store/DevfileRegistries/selectors';
 
 import styles from './index.module.css';
+import { getErrorMessage } from '../../../../services/helpers/getErrorMessage';
+import { updateDevfileMetadata } from '../../updateDevfileMetadata';
+import { selectWorkspacesSettings } from '../../../../store/Workspaces/Settings/selectors';
 
 type Props =
   MappedProps
@@ -78,9 +81,15 @@ export class DevfileSelectorFormGroup extends React.PureComponent<Props, State> 
   private async handleDevfileSelect(meta: che.DevfileMetaData): Promise<void> {
     // clear location input
     this.devfileLocationRef.current?.clearInput();
+    const cheDevworkspaceEnabled = this.props.workspacesSettings['che.devworkspaces.enabled'] === 'true';
+    let devfile: api.che.workspace.devfile.Devfile;
     try {
-      const devfileContent = await this.props.requestDevfile(meta.links.self) as string;
-      const devfile = safeLoad(devfileContent);
+      if (cheDevworkspaceEnabled) {
+        await this.props.requestFactoryResolver(meta.links.v2);
+        devfile = updateDevfileMetadata(this.props.factoryResolver.resolver.devfile, meta);
+      } else {
+        devfile = safeLoad(await this.props.requestDevfile(meta.links.self) as string);
+      }
       this.props.onDevfile(devfile);
     } catch (e) {
       this.showAlert({
@@ -108,7 +117,7 @@ export class DevfileSelectorFormGroup extends React.PureComponent<Props, State> 
       this.devfileLocationRef.current?.invalidateInput();
       this.showAlert({
         key: 'load-factory-resolver-failed',
-        title: `Failed to resolve or load the devfile. ${e}`,
+        title: `Failed to resolve or load the devfile. ${getErrorMessage(e)}`,
         variant: AlertVariant.danger,
       });
     }
@@ -179,6 +188,7 @@ export class DevfileSelectorFormGroup extends React.PureComponent<Props, State> 
 
 const mapStateToProps = (state: AppState) => ({
   registriesMetadata: selectRegistriesMetadata(state),
+  workspacesSettings: selectWorkspacesSettings(state),
   factoryResolver: state.factoryResolver,
 });
 
