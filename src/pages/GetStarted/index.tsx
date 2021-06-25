@@ -90,14 +90,6 @@ export class GetStarted extends React.PureComponent<Props, State> {
     });
   }
 
-  private getTitle(): string {
-    const titles: { [key in CreateWorkspaceTab]: string } = {
-      'quick-add': 'Quick Add',
-      'custom-workspace': 'Custom Workspace',
-    };
-    return titles[this.state.activeTabKey];
-  }
-
   private getActiveTabKey(): CreateWorkspaceTab {
     const { pathname, search } = this.props.history.location;
 
@@ -127,9 +119,9 @@ export class GetStarted extends React.PureComponent<Props, State> {
       this.showAlert({
         key: 'new-workspace-failed',
         variant: AlertVariant.danger,
-        title: e.message
+        title: e,
       });
-      throw new Error(e.message);
+      throw e;
     }
 
     const workspaceName = workspace.name;
@@ -191,7 +183,7 @@ export class GetStarted extends React.PureComponent<Props, State> {
 
   render(): React.ReactNode {
     const { activeTabKey } = this.state;
-    const title = this.getTitle();
+    const title = 'Create Workspace';
     const quickAddTab: CreateWorkspaceTab = 'quick-add';
     const customWorkspaceTab: CreateWorkspaceTab = 'custom-workspace';
 
